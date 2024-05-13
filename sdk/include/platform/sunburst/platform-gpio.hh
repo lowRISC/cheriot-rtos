@@ -2,6 +2,15 @@
 #include <cdefs.h>
 #include <stdint.h>
 
+enum class SonataJoystick : uint8_t
+{
+	Left    = 1 << 0,
+	Up      = 1 << 1,
+	Pressed = 1 << 2,
+	Down    = 1 << 3,
+	Right   = 1 << 4,
+};
+
 /**
  * A Simple Driver for the Sonata's GPIO.
  *
@@ -57,5 +66,10 @@ struct SonataGPIO
 	void led_toggle(uint32_t index) volatile
 	{
 		output = output ^ led_bit(index);
+	}
+
+	SonataJoystick read_joystick() volatile
+	{
+		return static_cast<SonataJoystick>(input & 0x1f);
 	}
 };
