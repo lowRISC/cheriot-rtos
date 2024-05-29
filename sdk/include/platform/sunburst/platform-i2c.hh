@@ -11,8 +11,8 @@ static const uint16_t SpcThigh[]  = {4000u, 600u, 260u};
 static const uint16_t SpcTlow[]   = {4700u, 1300u, 150u};
 static const uint16_t SpcThdSta[] = {4000u, 600u, 260u};
 static const uint16_t SpcTsuSta[] = {4700u, 600u, 260u};
-static const uint16_t SpcThdDat[] = {5000u, 1u, 1u};
-static const uint16_t SpcTsuDat[] = {250u, 100u, 50u};
+static const uint16_t SpcThdDat[] = {4000u, 1u, 1u};
+static const uint16_t SpcTsuDat[] = {500u, 100u, 50u};
 static const uint16_t SpcTBuf[]   = {4700u, 1300u, 500u};
 static const uint16_t SpcTsuSto[] = {4000u, 600u, 260u};
 
