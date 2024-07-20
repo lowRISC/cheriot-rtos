@@ -219,7 +219,7 @@ struct OpenTitanUart
 		interruptEnable = interruptEnable & ~interrupt;
 	}
 
-	void init(unsigned baudRate = 115'200) volatile
+	void init(unsigned baudRate = 921'600) volatile
 	{
 		// Nco = 2^20 * baud rate / cpu frequency
 		const uint32_t Nco =
