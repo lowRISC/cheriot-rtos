@@ -5,19 +5,80 @@
 
 SECTIONS
 {
-	. = @code_start@;
-	_start = .;
-
-	.loader_start :
-	{
-		*(.loader_start);
-	}
+	. = @heap_start@;
 
 	@thread_trusted_stacks@
 
 	__stack_space_start = .;
 	@thread_stacks@
 	__stack_space_end = .;
+
+	__compart_cgps = ALIGN(64);
+
+	.scheduler_globals : CAPALIGN
+	{
+		.scheduler_globals = .;
+		*.scheduler.compartment(.data .data.* .sdata .sdata.*);
+		.scheduler_bss_start = .;
+		*.scheduler.compartment(.sbss .sbss.* .bss .bss.*)
+	}
+	.scheduler_globals_end = .;
+
+	.allocator_sealed_objects : CAPALIGN
+	{
+		.allocator_sealed_objects = .;
+		*/cheriot.allocator.compartment(.sealed_objects)
+	}
+	.allocator_sealed_objects_end = .;
+
+	.allocator_globals : CAPALIGN
+	{
+		.allocator_globals = .;
+		*/cheriot.allocator.compartment(.data .data.* .sdata .sdata.*);
+		.allocator_bss_start = .;
+		*/cheriot.allocator.compartment(.sbss .sbss.* .bss .bss.*);
+	}
+	.allocator_globals_end = .;
+
+
+	@software_revoker_globals@
+
+	@gdc_ld@
+
+	__compart_cgps_end = .;
+
+	.sealed_objects :
+	{
+		@sealed_objects@
+	}
+
+	__shared_objects_start = .;
+	@shared_objects@
+	__shared_objects_end = .;
+
+	. = ALIGN(64);
+
+	# Everything after this point can be discarded after the loader has
+	# finished.
+	__export_mem_heap = .;
+
+	__cap_relocs :
+	{
+		__cap_relocs = .;
+		# FIXME: This currently doesn't do anything.  The linker creates this
+		# entire section.  The linker script needs to be modified to create
+		# separate caprelocs sections for each section.
+		@cap_relocs@
+	}
+	__cap_relocs_end = .;
+
+	. = @code_start@;
+	_start = .;
+
+	.loader_start :
+	 {
+		 *(.loader_start);
+	 }
 
 	.compartment_export_tables : ALIGN(8)
 	{
@@ -79,65 +140,6 @@ SECTIONS
 	@pcc_ld@
 
 	__compart_pccs_end = .;
-
-	__compart_cgps = ALIGN(64);
-
-	.scheduler_globals : CAPALIGN
-	{
-		.scheduler_globals = .;
-		*.scheduler.compartment(.data .data.* .sdata .sdata.*);
-		.scheduler_bss_start = .;
-		*.scheduler.compartment(.sbss .sbss.* .bss .bss.*)
-	}
-	.scheduler_globals_end = .;
-
-	.allocator_sealed_objects : CAPALIGN
-	{
-		.allocator_sealed_objects = .;
-		*/cheriot.allocator.compartment(.sealed_objects)
-	}
-	.allocator_sealed_objects_end = .;
-
-	.allocator_globals : CAPALIGN
-	{
-		.allocator_globals = .;
-		*/cheriot.allocator.compartment(.data .data.* .sdata .sdata.*);
-		.allocator_bss_start = .;
-		*/cheriot.allocator.compartment(.sbss .sbss.* .bss .bss.*);
-	}
-	.allocator_globals_end = .;
-
-
-	@software_revoker_globals@
-
-	@gdc_ld@
-
-	__compart_cgps_end = .;
-
-	.sealed_objects :
-	{
-		@sealed_objects@
-	}
-
-	__shared_objects_start = .;
-	@shared_objects@
-	__shared_objects_end = .;
-
-	. = ALIGN(64);
-
-	# Everything after this point can be discarded after the loader has
-	# finished.
-	__export_mem_heap = @heap_start@;
-
-	__cap_relocs :
-	{
-		__cap_relocs = .;
-		# FIXME: This currently doesn't do anything.  The linker creates this
-		# entire section.  The linker script needs to be modified to create
-		# separate caprelocs sections for each section.
-		@cap_relocs@
-	}
-	__cap_relocs_end = .;
 
 	# Collect all compartment headers
 	.compartment_headers : ALIGN(4)
