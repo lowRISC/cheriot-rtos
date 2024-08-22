@@ -67,17 +67,17 @@
     },
     "instruction_memory": {
         "start": 0x00101000,
-        "end":   0x00140000
+        "end":   0x00120000
     },
     "heap": {
-        "end": 0x00140000
+        "end": 0x00120000
     },
     "revokable_memory_start": 0x00101000,
     "defines" : [
         "IBEX",
         "SUNBURST",
         "SUNBURST_SHADOW_BASE=0x30000000",
-        "SUNBURST_SHADOW_SIZE=0x4000"
+        "SUNBURST_SHADOW_SIZE=0x2000"
     ],
     "driver_includes" : [
         "../include/platform/sunburst",
