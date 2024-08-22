@@ -72,7 +72,7 @@
     "heap": {
         "end": 0x00140000
     },
-    "revokable_memory_start": 0x00100000,
+    "revokable_memory_start": 0x00101000,
     "defines" : [
         "IBEX",
         "SUNBURST",
