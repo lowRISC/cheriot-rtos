@@ -49,6 +49,16 @@ struct SonataSpi
 	 * writes are ignored.
 	 */
 	uint32_t transmitFifo;
+	/**
+	 * Information about the SPI controller. This register reports the depths of
+	 * the transmit and receive FIFOs within the controller.
+	 */
+	uint32_t info;
+	/**
+	 * Chip Select lines; clear a bit to transmit/receive to/from the corresponding
+	 * peripheral.
+	 */
+	uint32_t cs;
 
 	/// Configuration Register Fields
 	enum : uint32_t
@@ -140,6 +150,15 @@ struct SonataSpi
 		StartByteCountMask = 0x7ffu,
 	};
 
+	/// Info Register Fields
+	enum : uint32_t
+	{
+		/// Maximum number of items in the transmit FIFO.
+		InfoTxFifoDepth = 0xffu << 0,
+		/// Maximum number of items in the receive FIFO.
+		InfoRxFifoDepth = 0xffu << 8,
+	};
+
 	/// Flag set when we're debugging this driver.
 	static constexpr bool DebugSonataSpi = false;
 
@@ -169,6 +188,9 @@ struct SonataSpi
 		                (ClockPhase ? ConfigurationClockPhase : 0) |
 		                (MsbFirst ? ConfigurationMSBFirst : 0) |
 		                (HalfClockPeriod & ConfigurationHalfClockPeriodMask);
+
+		// Ensure that FIFOs are emptied of any stale data.
+		control = ControlTransmitClear | ControlReceiveClear;
 	}
 
 	/// Waits for the SPI device to become idle
@@ -189,23 +211,24 @@ struct SonataSpi
 		len &= StartByteCountMask;
 
 		wait_idle();
-		control = ControlTransmitEnable;
-		start   = len;
-
-		uint32_t transmitAvailable = 0;
-		for (uint32_t i = 0; i < len; ++i)
+		// Do not attempt a zero-byte transfer; not supported by the controller.
+		if (len)
 		{
-			if (transmitAvailable == 0)
+			control = ControlTransmitEnable;
+			start   = len;
+
+			uint32_t transmitAvailable = 0;
+			for (uint32_t i = 0; i < len; ++i)
 			{
-				while (transmitAvailable < 64)
+				while (!transmitAvailable)
 				{
 					// Read number of bytes in TX FIFO to calculate space
 					// available for more bytes
-					transmitAvailable = 64 - (status & StatusTxFifoLevel);
+					transmitAvailable = 8 - (status & StatusTxFifoLevel);
 				}
+				transmitFifo = data[i];
+				transmitAvailable--;
 			}
-			transmitFifo = data[i];
-			transmitAvailable--;
 		}
 	}
 
@@ -222,14 +245,18 @@ struct SonataSpi
 		              "You can't receive more than 0x7ff bytes at a time.");
 		len &= StartByteCountMask;
 		wait_idle();
-		control = ControlReceiveEnable;
-		start   = len;
-
-		for (uint32_t i = 0; i < len; ++i)
+		// Do not attempt a zero-byte transfer; not supported by the controller.
+		if (len)
 		{
-			// Wait for at least one byte to be available in the RX FIFO
-			while ((status & StatusRxFifoLevel) == 0) {}
-			data[i] = static_cast<uint8_t>(receiveFifo);
+			control = ControlReceiveEnable;
+			start   = len;
+
+			for (uint32_t i = 0; i < len; ++i)
+			{
+				// Wait for at least one byte to be available in the RX FIFO
+				while ((status & StatusRxFifoLevel) == 0) {}
+				data[i] = static_cast<uint8_t>(receiveFifo);
+			}
 		}
 	}
 };
