@@ -150,6 +150,9 @@ struct OpenTitanUart
 		Level64 = 0x6,
 	};
 
+	static constexpr uint32_t RXFIFODepth = 8;
+	static constexpr uint32_t TXFIFODepth = 8;
+
 	/**
 	 * Configure parity.
 	 *
@@ -240,7 +243,7 @@ struct OpenTitanUart
 
 	bool can_write() volatile
 	{
-		return transmit_fifo_level() < 32;
+		return transmit_fifo_level() < TXFIFODepth;
 	}
 
 	bool can_read() volatile
