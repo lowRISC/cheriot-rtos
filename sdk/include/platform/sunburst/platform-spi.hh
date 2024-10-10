@@ -60,6 +60,21 @@ struct SonataSpi
 	 */
 	uint32_t cs;
 
+	/// Sonata SPI Interrupts
+	typedef enum [[clang::flag_enum]]
+	: uint32_t {
+		/// Raised when a SPI operation completes and the block has become idle.
+		InterruptComplete = 1 << 4,
+		/// Asserted whilst the transmit FIFO level is at or above the watermark.
+		InterruptTransmitWatermark = 1 << 3,
+		/// Asserted whilst the transmit FIFO is empty.
+		InterruptTransmitEmpty = 1 << 2,
+		/// Asserted whilst the receive FIFO level is at or below the watermark.
+		InterruptReceiveWatermark = 1 << 1,
+		/// Asserted whilst the receive FIFO is full.
+		InterruptReceiveFull = 1 << 0,
+	} SonataSpiInterrupt;
+
 	/// Configuration Register Fields
 	enum : uint32_t
 	{
@@ -164,6 +179,18 @@ struct SonataSpi
 
 	/// Helper for conditional debug logs and assertions.
 	using Debug = ConditionalDebug<DebugSonataSpi, "Sonata SPI">;
+
+	/// Enable the given interrupt(s).
+	void interrupt_enable(SonataSpiInterrupt interrupt) volatile
+	{
+		interruptEnable = interruptEnable | interrupt;
+	}
+
+	/// Disable the given interrupt(s).
+	void interrupt_disable(SonataSpiInterrupt interrupt) volatile
+	{
+		interruptEnable = interruptEnable & ~interrupt;
+	}
 
 	/**
 	 * Initialises the SPI block
