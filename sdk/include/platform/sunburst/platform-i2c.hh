@@ -233,6 +233,9 @@ struct OpenTitanI2c
 	  FifoControlTransmitReset = 1 << 8,
 	};
 
+	static constexpr uint32_t RXFIFODepth = 8;
+	static constexpr uint32_t FmtFIFODepth = 8;
+
 	/// Flag set when we're debugging this driver.
 	static constexpr bool DebugOpenTitanI2c = true;
 
@@ -358,7 +361,7 @@ struct OpenTitanI2c
 	                                 uint8_t        buf[],
 	                                 const uint32_t NumBytes) volatile
 	{
-		for (uint32_t idx = 0; idx < NumBytes; idx += UINT8_MAX)
+		for (uint32_t idx = 0; idx < NumBytes; idx += RXFIFODepth)
 		{
 			blocking_write_byte(FormatDataStart | (Addr7 << 1) | 1u);
 			while (!format_is_empty()) {}
@@ -368,9 +371,9 @@ struct OpenTitanI2c
 				return false;
 			}
 			uint32_t bytesRemaining = NumBytes - idx;
-			bool     lastChunk      = UINT8_MAX >= bytesRemaining;
+			bool     lastChunk      = RXFIFODepth >= bytesRemaining;
 			uint8_t  chunkSize =
-              lastChunk ? static_cast<uint8_t>(bytesRemaining) : UINT8_MAX;
+				lastChunk ? static_cast<uint8_t>(bytesRemaining) : RXFIFODepth;
 
 			blocking_write_byte((lastChunk ? FormatDataStop : 0) |
 			                    FormatDataReadBytes | chunkSize);
@@ -378,6 +381,7 @@ struct OpenTitanI2c
 
 			for (uint32_t chunkIdx = 0; chunkIdx < chunkSize; ++chunkIdx)
 			{
+
 				buf[idx + chunkIdx] = readData;
 			}
 		}
