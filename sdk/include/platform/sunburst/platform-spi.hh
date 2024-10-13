@@ -135,6 +135,14 @@ struct SonataSpi
 		 * interrupt will trigger at different points
 		 */
 		ControlReceiveWatermarkMask = 0xf << 8,
+		/**
+		 * Internal loopback function enabled when set to 1.
+		 */
+		ControlInternalLoopback = 1 << 30,
+		/**
+		 * Software reset performed when written as 1.
+		 */
+		ControlSoftwareReset = 1u << 31,
 	};
 
 	/// Status Register Fields
@@ -216,8 +224,14 @@ struct SonataSpi
 		                (MsbFirst ? ConfigurationMSBFirst : 0) |
 		                (HalfClockPeriod & ConfigurationHalfClockPeriodMask);
 
-		// Ensure that FIFOs are emptied of any stale data.
-		control = ControlTransmitClear | ControlReceiveClear;
+		// Ensure that FIFOs are emptied of any stale data and the controller core
+		// has returned to Idle if it is presently active (eg. an incomplete previous
+		// operation, perhaps one that was interrupted/failed).
+		//
+		// Note: although, from a logical perspective, the three operations
+		// (i) tx clear, (ii) core reset and (iii) rx clear should be performed in that
+		// order, presently the implementation supports performing them as a single write.
+		control = ControlTransmitClear | ControlSoftwareReset | ControlReceiveClear;
 	}
 
 	/// Waits for the SPI device to become idle
