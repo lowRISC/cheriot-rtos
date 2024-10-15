@@ -103,62 +103,139 @@
     "simulation": false,
     "interrupts": [
         {
-            "name": "Uart0TxWatermark",
+            "name": "RevokerInterrupt",
             "number": 1,
-            "priority": 3,
-            "edge_triggered": true
-        },
-        {
-            "name": "Uart0RxWatermark",
-            "number": 2,
-            "priority": 3,
-            "edge_triggered": true
-        },
-        {
-            "name": "Uart0TxEmpty",
-            "number": 3,
-            "priority": 3,
-            "edge_triggered": true
-        },
-        {
-            "name": "Uart0RxOverflow",
-            "number": 4,
-            "priority": 3,
-            "edge_triggered": true
-        },
-        {
-            "name": "Uart1TxWatermark",
-            "number": 9,
-            "priority": 3,
-            "edge_triggered": true
-        },
-        {
-            "name": "Uart1RxWatermark",
-            "number": 10,
-            "priority": 3,
-            "edge_triggered": true
-        },
-        {
-            "name": "Uart1TxEmpty",
-            "number": 11,
-            "priority": 3,
-            "edge_triggered": true
-        },
-        {
-            "name": "Uart1RxOverflow",
-            "number": 12,
-            "priority": 3,
-            "edge_triggered": true
+            "priority": 2
         },
         {
             "name": "EthernetInterrupt",
-            "number": 47,
+            "number": 2,
             "priority": 3
         },
         {
-            "name": "RevokerInterrupt",
-            "number": 72,
-            "priority": 2
+            "name": "UsbDevInterrupt",
+            "number": 3,
+            "priority": 3
+        },
+        {
+            "name": "Uart0Interrupt",
+            "number": 8,
+            "priority": 3
+        },
+        {
+            "name": "Uart1Interrupt",
+            "number": 9,
+            "priority": 3
+        },
+        {
+            "name": "Uart2Interrupt",
+            "number": 10,
+            "priority": 3
+        },
+        {
+            "name": "Uart3Interrupt",
+            "number": 11,
+            "priority": 3
+        },
+        {
+            "name": "Uart4Interrupt",
+            "number": 12,
+            "priority": 3
+        },
+        {
+            "name": "Uart5Interrupt",
+            "number": 13,
+            "priority": 3
+        },
+        {
+            "name": "Uart6Interrupt",
+            "number": 14,
+            "priority": 3
+        },
+        {
+            "name": "Uart7Interrupt",
+            "number": 15,
+            "priority": 3
+        },
+        {
+            "name": "I2c0Interrupt",
+            "number": 16,
+            "priority": 3
+        },
+        {
+            "name": "I2c1Interrupt",
+            "number": 17,
+            "priority": 3
+        },
+        {
+            "name": "I2c2Interrupt",
+            "number": 18,
+            "priority": 3
+        },
+        {
+            "name": "I2c3Interrupt",
+            "number": 19,
+            "priority": 3
+        },
+        {
+            "name": "I2c4Interrupt",
+            "number": 20,
+            "priority": 3
+        },
+        {
+            "name": "I2c5Interrupt",
+            "number": 21,
+            "priority": 3
+        },
+        {
+            "name": "I2c6Interrupt",
+            "number": 22,
+            "priority": 3
+        },
+        {
+            "name": "I2c7Interrupt",
+            "number": 23,
+            "priority": 3
+        },
+        {
+            "name": "Spi0Interrupt",
+            "number": 24,
+            "priority": 3
+        },
+        {
+            "name": "Spi1Interrupt",
+            "number": 25,
+            "priority": 3
+        },
+        {
+            "name": "Spi2Interrupt",
+            "number": 26,
+            "priority": 3
+        },
+        {
+            "name": "Spi3Interrupt",
+            "number": 27,
+            "priority": 3
+        },
+        {
+            "name": "Spi4Interrupt",
+            "number": 28,
+            "priority": 3
+        },
+        {
+            "name": "Spi5Interrupt",
+            "number": 29,
+            "priority": 3
+        },
+        {
+            "name": "Spi6Interrupt",
+            "number": 30,
+            "priority": 3
+        },
+        {
+            "name": "Spi7Interrupt",
+            "number": 31,
+            "priority": 3
         }
     ]
 }
