@@ -30,7 +30,7 @@ typedef volatile void FILE;
 #	define stdin MMIO_CAPABILITY(void uart)
 #endif
 
-#if DEVICE_EXISTS(uart1)
+#if DEVICE_EXISTS(uart1) && !defined(STDIO_STDERR_IS_STDOUT)
 #	define stderr MMIO_CAPABILITY(void, uart1)
 #elif defined(stdout)
 #	define stderr stdout
