@@ -6,7 +6,19 @@
         },
         "gpio" : {
             "start" : 0x80000000,
+            "end"   : 0x80000010
+        },
+        "gpio_rpi" : {
+            "start" : 0x80000010,
             "end"   : 0x80000020
+        },
+        "gpio_arduino" : {
+            "start" : 0x80000020,
+            "end"   : 0x80000030
+        },
+        "gpio_pmod" : {
+            "start" : 0x80000030,
+            "end"   : 0x80000040
         },
         "clint": {
             "start" : 0x80040000,
