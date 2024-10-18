@@ -81,73 +81,156 @@ class OpenTitanUsbdev {
 	/* Config register for the USB PHY pins. */
 	uint32_t phyConfig;
 
-	/// OpenTitan USBDEV Interrupts
-	typedef enum [[clang::flag_enum]]
-	: uint32_t {
-		/// Asserted whilst the Available SETUP Buffer FIFO is empty.
-		InterruptAvSetupBufferEmpty = 1 << 17,
-		/// Raised when an error occurs during an OUT transaction.
-		InterruptLinkOutError = 1 << 16,
-		/// Raised when VBUS is detected.
-		InterruptPowered = 1 << 15,
-		/// Raised when the USB frame number is updated.
-		InterruptFrame = 1 << 14,
-		/// Raised when a bit stuffing violation is detected.
-		InterruptBitstuffError = 1 << 13,
-		/// Raised when an invalid Packet IDentifier is detected.
-		InterruptPidError = 1 << 12,
-		/// Raised when a CRC error is detected on a received packet.
-		InterruptCrcError = 1 << 11,
-		/// Raised when an errors occurs during an IN transaction.
-		InterruptLinkInError = 1 << 10,
-		/// Raised when the Available OUT/Setup Buffer FIFO overflows.
-		InterruptAvBufferOverflow = 1 << 9,
-		/// Asserted whilst the receive FIFO is full.
-		InterruptRecvFifoFull = 1 << 8,
-		/// Asserted whilst the Available OUT Buffer FIFO is empty.
-		InterruptAvOutBufferEmpty = 1 << 7,
-		/// Raised when the link transitions from Suspended to non-Idle.
-		InterruptLinkResume = 1 << 6,
-		/// Raised when the link has entered the suspend state (Idle for > 3ms).
-		InterruptLinkSuspend = 1 << 5,
-		/// Raised when the link has been in SE0 state for longer than 3us
-		/// indicating a Bus Reset condition.
-		InterruptLinkReset = 1 << 4,
-		/// Raised when link has been active for 4.096ms without detecting a
-		/// Start of Frame (SOF) packet.
-		InterruptHostLost = 1 << 3,
-		/// Raised when VBUS is lost; link to USB host controller disconnected.
-		InterruptDisconnected = 1 << 2,
-		/// Asserted whilst a packet has been sent but not cleared from `inSent`.
-		InterruptPacketSent = 1 << 1,
-		/// Asserted whilst the receive FIFO is non-empty.
-		InterruptPacketReceived = 1 << 0,
-	} OpenTitanUsbdevInterrupt;
+	/* Interrupt definitions for OpenTitan's USB Device. */
+	enum class UsbdevInterrupt : uint32_t
+	{
+		/* Interrupt asserted whilst the receive FIFO (buffer) is not empty. */
+		PacketReceived = 1u << 0,
+		/**
+		 * Interrupt asserted when a packet was sent as part of an IN
+		 * transaction, but not cleared from the `inSent` register.
+		 */
+		PacketSent = 1u << 1,
+		/**
+		 * Interrupt raised when VBUS (power supply) is lost, i.e. the link to
+		 * the USB host controller has been disconnected.
+		 */
+		Disconnected = 1u << 2,
+		/**
+		 * Interrupt raised when the link is active, but a Start of Frame (SOF)
+		 * packet has not been received within a given timeout threshold, which
+		 * is set to 4.096 milliseconds.
+		 */
+		HostLost = 1u << 3,
+		/**
+		 * Interrupt raised when a Bus Reset condition is indicated on the link
+		 * by the link being held in an SE0 state (Single Ended Zero, both lines
+		 * being pulled low) for longer than 3 microseconds.
+		 */
+		LinkReset = 1u << 4,
+		/**
+		 * Interrupt raised when the link has entered the suspend state, due to
+		 * being idle for more than 3 milliseconds.
+		 */
+		LinkSuspend = 1u << 5,
+		/* Interrupt raised on link transition from suspended to non-idle. */
+		LinkResume = 1u << 6,
+		/* Interrupt asserted whilst the Available OUT buffer is empty.
+		 */
+		AvailableOutEmpty = 1u << 7,
+		/* Interrupt asserted whilst the Receive buffer is full. */
+		ReceiveFull = 1u << 8,
+		/**
+		 * Interrupt raised when the Available OUT buffer or the Available SETUP
+		 * buffer overflows.
+		 */
+		AvailableBufferOverflow = 1u << 9,
+		/* Interrupt raised when an error occurs during an IN transaction. */
+		LinkInError = 1u << 10,
+		/**
+		 * Interrupt raised when a CRC (cyclic redundancy check) error occurs on
+		 * a received packet; i.e. there was an error in transmission.
+		 */
+		RedundancyCheckError = 1u << 11,
+		/* Interrupt raised when an invalid Packet Identifier is received. */
+		PacketIdentifierError = 1u << 12,
+		/* Interrupt raised when a bit stuffing violation is detected. */
+		BitstuffingError = 1u << 13,
+		/**
+		 * Interrupt raised when the USB frame number is updated with a valid
+		 * SOF (Start of Frame) packet.
+		 */
+		FrameUpdated = 1u << 14,
+		/* Interrupt raised when VBUS (power supply) is detected. */
+		Powered = 1u << 15,
+		/* Interrupt raised when an error occurs during an OUT transaction. */
+		LinkOutError = 1u << 16,
+		/* Interrupt asserted whilst the Available SETUP buffer is empty. */
+		AvailableSetupEmpty = 1u << 17,
+	};
 
-  /// USB Control Register Fields.
-  static constexpr uint32_t usbCtrlEnable          = 1U;
-  static constexpr uint32_t usbCtrlDeviceAddr      = 0x7F0000U;
-  static constexpr unsigned usbCtrlDeviceAddrShift = 16;
-  /// USB Status Register Fields.
-  static constexpr uint32_t usbStatAvOutFull   = 0x800000U;
-  static constexpr uint32_t usbStatRxDepth     = 0xF000000U;
-  static constexpr uint32_t usbStatAvSetupFull = 0x40000000U;
-  /// RX FIFO Register Fields.
-  static constexpr uint32_t rxFifoBuffer    = 0x1FU;
-  static constexpr uint32_t rxFifoSize      = 0x7F00U;
-  static constexpr uint32_t rxFifoSetup     = 0x80000U;
-  static constexpr uint32_t rxFifoEp        = 0xF00000U;
-  static constexpr unsigned rxFifoSizeShift = 8U;
-  static constexpr unsigned rxFifoEpShift   = 20U;
-  /// Config In Register Fields.
-  static constexpr uint32_t configInBuffer      = 0x1FU;
-  static constexpr uint32_t configInSending     = 0x20000000U;
-  static constexpr uint32_t configInPend        = 0x40000000U;
-  static constexpr uint32_t configInRdy         = 0x80000000U;
-  static constexpr unsigned configInBufferShift = 0U;
-  static constexpr unsigned configInSizeShift   = 8U;
-  /// PHY Config Register Fields.
-  static constexpr uint32_t phyConfigUseDiffRcvr = 1U;
+	/**
+	 * Definitions of fields (and their locations) for the USB Control register
+	 * (offset 0x10).
+	 *
+	 * https://opentitan.org/book/hw/ip/usbdev/doc/registers.html#usbctrl
+	 */
+	enum class UsbControlField : uint32_t
+	{
+		Enable           = (1u << 0),
+		ResumeLinkActive = (1u << 1),
+		/* Bits 2-15 are currently unused and should not be interacted with. */
+		DeviceAddress = (0x7Fu << 16),
+		/* Bits 23-31 are currently unused and should not be interacted with. */
+	};
+
+	/**
+	 * Definitions of fields (and their locations) for the USB Status register
+	 * (offset 0x1c).
+	 *
+	 * https://opentitan.org/book/hw/ip/usbdev/doc/registers.html#usbstat
+	 */
+	enum class UsbStatusField : uint32_t
+	{
+		Frame               = (0x7FFu << 0),
+		HostLost            = (1u << 11),
+		LinkState           = (0x7u << 12),
+		Sense               = (1u << 15),
+		AvailableOutDepth   = (0xFu << 16),
+		AvailableSetupDepth = (0x7u << 20),
+		AvailableOutFull    = (1u << 23),
+		ReceiveDepth        = (0xFu << 24),
+		/* Bits 28-29 are currently unused and should not be interacted with. */
+		AvailableSetupFull = (1u << 30),
+		ReceiveEmpty       = (1u << 31),
+	};
+
+	/**
+	 * Definitions of fields (and their locations) for the Receive FIFO
+	 * buffer register (offset 0x28).
+	 *
+	 * https://opentitan.org/book/hw/ip/usbdev/doc/registers.html#rxfifo
+	 */
+	enum class ReceiveBufferField : uint32_t
+	{
+		BufferId = (0x1Fu << 0),
+		/* Bits 5-7 are currently unused and should not be interacted with. */
+		Size = (0x7Fu << 8),
+		/* Bits 15-18 are currently unused and should not be interacted with. */
+		Setup      = (1u << 19),
+		EndpointId = (0xFu << 20),
+		/* Bits 24-31 are currently unused and should not be interacted with. */
+	};
+
+	/**
+	 * Definitions of fields (and their locations) for a Config In register
+	 * (where there is one such register for each endpoint). These are
+	 * the registers with offsets 0x44 up to (and not including) 0x74.
+	 *
+	 * https://opentitan.org/book/hw/ip/usbdev/doc/registers.html#configin
+	 */
+	enum class ConfigInField : uint32_t
+	{
+		BufferId = (0x1Fu << 0),
+		/* Bits 5-7 are currently unused and should not be interacted with. */
+		Size = (0x7Fu << 8),
+		/* Bits 15-28 are currently unused and should not be interacted with. */
+		Sending = (1u << 29),
+		Pending = (1u << 30),
+		Ready   = (1u << 31),
+	};
+
+	/**
+	 * Definitions of fields (and their locations) for the PHY Config
+	 * Register (offset 0x8c).
+	 *
+	 * https://opentitan.org/book/hw/ip/usbdev/doc/registers.html#phy_config
+	 */
+	enum class PhyConfigField : uint32_t
+	{
+		UseDifferentialReceiver = (1u << 0),
+		/* Other PHY Configuration fields are omitted. */
+	};
 
   /**
    * Ensure that the Available OUT Buffer and Available SETUP Buffers are kept supplied with
@@ -155,10 +238,13 @@ class OpenTitanUsbdev {
    * currently committed and the return value is the updated bitmap.
    */
   [[nodiscard]] uint64_t supply_buffers(uint64_t buf_avail) volatile {
+		constexpr uint32_t SetupFullBit = static_cast<uint32_t>(UsbStatusField::AvailableSetupFull);
+		constexpr uint32_t OutFullBit = static_cast<uint32_t>(UsbStatusField::AvailableOutFull);
+
     for (uint8_t buf_num = 0U; buf_num < NumBuffers; buf_num++) {
       if (buf_avail & (1U << buf_num)) {
-        if (usbStatus & usbStatAvSetupFull) {
-          if (usbStatus & usbStatAvOutFull) {
+        if (usbStatus & SetupFullBit) {
+          if (usbStatus & OutFullBit) {
             break;
           }
           availableOutBuffer = buf_num;
@@ -172,15 +258,15 @@ class OpenTitanUsbdev {
   }
 
 	/// Enable the given interrupt(s).
-	void interrupt_enable(OpenTitanUsbdevInterrupt interrupt) volatile
+	void interrupt_enable(UsbdevInterrupt interrupt) volatile
 	{
-		interruptEnable = interruptEnable | interrupt;
+		interruptEnable = interruptEnable | static_cast<uint32_t>(interrupt);
 	}
 
 	/// Disable the given interrupt(s).
-	void interrupt_disable(OpenTitanUsbdevInterrupt interrupt) volatile
+	void interrupt_disable(UsbdevInterrupt interrupt) volatile
 	{
-		interruptEnable = interruptEnable & ~interrupt;
+		interruptEnable = interruptEnable & ~static_cast<uint32_t>(interrupt);
 	}
 
   /**
@@ -190,7 +276,7 @@ class OpenTitanUsbdev {
    */
   [[nodiscard]] int init(uint64_t &buf_avail) volatile {
     buf_avail = supply_buffers(((uint64_t)1U << NumBuffers) - 1U);
-    phyConfig = phyConfigUseDiffRcvr;
+		phyConfig = static_cast<uint32_t>(PhyConfigField::UseDifferentialReceiver);
     return 0;
   }
 
@@ -241,7 +327,7 @@ class OpenTitanUsbdev {
    * imminently.
    */
   [[nodiscard]] int connect() volatile {
-    usbControl = usbControl | usbCtrlEnable;
+		usbControl = usbControl | static_cast<uint32_t>(UsbControlField::Enable);
     return 0;
   }
 
@@ -249,14 +335,17 @@ class OpenTitanUsbdev {
    * Disconnect the device from the USB.
    */
   [[nodiscard]] int disconnect() volatile {
-    usbControl = usbControl & ~usbCtrlEnable;
+		usbControl = usbControl & ~static_cast<uint32_t>(UsbControlField::Enable);
     return 0;
   }
 
   /**
    * Indicate whether the USB device is connected (pullup enabled).
    */
-  [[nodiscard]] bool connected() volatile { return (usbControl & usbCtrlEnable) != 0; }
+	[[nodiscard]] bool connected() volatile
+	{
+		return (usbControl & static_cast<uint32_t>(UsbControlField::Enable));
+	}
 
   /**
    * Set the device address on the USB; this address will have been supplied by the USB host
@@ -264,7 +353,8 @@ class OpenTitanUsbdev {
    */
   [[nodiscard]] int set_device_address(uint8_t address) volatile {
     if (address < 0x80) {
-      usbControl = (usbControl & ~usbCtrlDeviceAddr) | (address << usbCtrlDeviceAddrShift);
+		  constexpr uint32_t Mask = static_cast<uint32_t>(UsbControlField::DeviceAddress);
+		  usbControl = (usbControl & ~Mask) | (address << 16);
       return 0;
     }
     return -1;
@@ -275,6 +365,7 @@ class OpenTitanUsbdev {
    * packet. The caller is responsible for reusing or releasing the buffer.
    */
   [[nodiscard]] int packet_collected(uint8_t &ep, uint8_t &buf_num) volatile {
+		constexpr uint32_t BufferIdMask = static_cast<uint32_t>(ConfigInField::BufferId);
     uint32_t sent = inSent;
     // Clear first packet sent indication.
     for (ep = 0U; ep < MaxEndpoints; ep++) {
@@ -283,7 +374,7 @@ class OpenTitanUsbdev {
         // Clear the `in_sent` bit for this specific endpoint.
         inSent = epMask;
         // Indicate which buffer has been released.
-        buf_num = (configIn[ep] & configInBuffer) >> configInBufferShift;
+        buf_num = (configIn[ep] & BufferIdMask) >> 0;
         return 0;
       }
     }
@@ -298,8 +389,9 @@ class OpenTitanUsbdev {
     if (size) {
       usbdev_transfer((uint32_t *)buf_base(0x800 + buf_num * MaxPacketLen), data, size, true);
     }
-    configIn[ep] = (buf_num << configInBufferShift) | (size << configInSizeShift);
-    configIn[ep] = configIn[ep] | configInRdy;
+		constexpr uint32_t ReadyBit = static_cast<uint32_t>(ConfigInField::Ready);
+    configIn[ep] = (buf_num << 0) | (size << 8);
+    configIn[ep] = configIn[ep] | ReadyBit;
     return 0;
   }
 
@@ -308,13 +400,14 @@ class OpenTitanUsbdev {
    */
   [[nodiscard]] int recv_packet(uint8_t &ep, uint8_t &buf_num, uint16_t &size, bool &is_setup,
                                 uint32_t *data) volatile {
-    if (usbStatus & usbStatRxDepth) {
+    if (usbStatus & static_cast<uint32_t>(UsbStatusField::ReceiveDepth)) {
       uint32_t rx = receiveBuffer;  // FIFO, single word read required.
 
-      ep       = (rx & rxFifoEp) >> rxFifoEpShift;
-      size     = (rx & rxFifoSize) >> rxFifoSizeShift;
-      is_setup = (rx & rxFifoSetup) != 0U;
-      buf_num  = rx & rxFifoBuffer;
+      typedef ReceiveBufferField Reg;
+      ep       = (rx & static_cast<uint32_t>(Reg::EndpointId)) >> 20;
+      size     = (rx & static_cast<uint32_t>(Reg::Size)) >> 8;
+      is_setup = (rx & static_cast<uint32_t>(Reg::Setup)) != 0U;
+      buf_num  = rx & static_cast<uint32_t>(Reg::BufferId);
       // Reception of Zero Length Packets occurs in the Status Stage of IN Control Transfers.
       if (size) {
         usbdev_transfer(data, (uint32_t *)buf_base(0x800 + buf_num * MaxPacketLen), size, false);
