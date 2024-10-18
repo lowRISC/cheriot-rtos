@@ -21,6 +21,12 @@ class OpenTitanUsbdev {
   static constexpr uint8_t MaxEndpoints = 12U;
 
 	/**
+	 * The offset from the start of the USB Device MMIO region at which
+	 * packet buffer memory begins.
+	 */
+	static constexpr uint32_t BufferStartAddress = 0x800u;
+
+	/**
 	 * Register definitions for the OpenTitan USB device. Each register is 4
 	 * bytes in length, defined sequentially with no gaps in memory.
 	 *
@@ -387,7 +393,7 @@ class OpenTitanUsbdev {
   [[nodiscard]] int send_packet(uint8_t buf_num, uint8_t ep, const uint32_t *data, uint8_t size) volatile {
     // Transmission of Zero Length Packets is common over the USB.
     if (size) {
-      usbdev_transfer((uint32_t *)buf_base(0x800 + buf_num * MaxPacketLen), data, size, true);
+      usbdev_transfer((uint32_t *)buffers(buf_num), data, size, true);
     }
 		constexpr uint32_t ReadyBit = static_cast<uint32_t>(ConfigInField::Ready);
     configIn[ep] = (buf_num << 0) | (size << 8);
@@ -410,59 +416,99 @@ class OpenTitanUsbdev {
       buf_num  = rx & static_cast<uint32_t>(Reg::BufferId);
       // Reception of Zero Length Packets occurs in the Status Stage of IN Control Transfers.
       if (size) {
-        usbdev_transfer(data, (uint32_t *)buf_base(0x800 + buf_num * MaxPacketLen), size, false);
+        usbdev_transfer(data, (uint32_t *)buffers(buf_num), size, false);
       }
       return 0;
     }
     return -1;
   }
 
- private:
-  /**
-   * Return a pointer to the given offset within the USB device register space; this is used to
-   * access the packet buffer memory.
-   */
-  volatile uint32_t *buf_base(uint32_t offset) volatile { return (uint32_t *)((uintptr_t)this + offset); }
+	private:
+	/**
+	 * Return a pointer to the given offset within the USB device register
+	 * space; this is used to access the packet buffer memory.
+	 *
+	 * @param bufferId The buffer number to access the packet buffer memory for
+	 *
+	 * @returns A volatile pointer to the buffer's memory.
+	 */
+	volatile uint32_t *buffers(uint8_t bufferId) volatile
+	{
+		const uint32_t Offset = BufferStartAddress + bufferId * MaxPacketLen;
+		const uintptr_t Address = reinterpret_cast<uintptr_t>(this) + Offset;
+		return reinterpret_cast<uint32_t *>(Address);
+	}
 
-  /**
-   * Faster, unrolled, word-based data transfer to/from the packet buffer memory.
-   */
-  static void usbdev_transfer(uint32_t *dp, const uint32_t *sp, uint8_t len, bool to_dev) {
-    const uint32_t *esp = (uint32_t *)((uintptr_t)sp + (len & ~15u));
-    // Unrolled to mitigate the loop overheads.
-    while (sp < esp) {
-      dp[0] = sp[0];
-      dp[1] = sp[1];
-      dp[2] = sp[2];
-      dp[3] = sp[3];
-      dp += 4;
-      sp += 4;
-    }
-    len &= 15u;
-    // Copy the remaining whole words.
-    while (len >= 4u) {
-      *dp++ = *sp++;
-      len -= 4u;
-    }
-    // Tail bytes, handling the fact that USBDEV supports only 32-bit accesses.
-    if (len > 0u) {
-      if (to_dev) {
-        // Collect final bytes into a word.
-        const uint8_t *bsp = (uint8_t *)sp;
-        uint32_t d         = bsp[0];
-        if (len > 1u) d |= bsp[1] << 8;
-        if (len > 2u) d |= bsp[2] << 16;
-        // Write the final word to the device.
-        *dp = d;
-      } else {
-        uint8_t *bdp = (uint8_t *)dp;
-        // Collect the final word from the device.
-        uint32_t s = *sp;
-        // Unpack it into final bytes.
-        *bdp = (uint8_t)s;
-        if (len > 1u) bdp[1] = (uint8_t)(s >> 8);
-        if (len > 2u) bdp[2] = (uint8_t)(s >> 16);
-      }
-    }
-  }
+	/**
+	 * Perform a transfer to or from packet buffer memory. This function is
+	 * hand-optimised to perform a faster, unrolled, word-based data transfer
+	 * for efficiency.
+	 *
+	 * @param destination A pointer to transfer the source data to.
+	 * @param source A pointer to the data to be transferred.
+	 * @param size The size of the data pointed to by `source`.
+	 * @param toDevice True if the transfer is to the device (e.g. when sending
+	 * a packet), and False if not (e.g. when receiving a packet).
+	 */
+	static void usbdev_transfer(volatile uint32_t       *destination,
+	                            const volatile uint32_t *source,
+	                            uint8_t                  size,
+	                            bool                     toDevice)
+	{
+		// Unroll word transfer. Each word transfer is 4 bytes, so we must round
+		// to the closest multiple of (4 * words) when unrolling.
+		constexpr uint8_t  UnrollFactor = 4u;
+		constexpr uint32_t UnrollMask   = 0xF;
+
+		// Round down to the previous multiple for unrolling
+		const uint32_t  UnrollSize = (size & ~UnrollMask);
+		const uint32_t *sourceEnd  = reinterpret_cast<uint32_t *>(
+          reinterpret_cast<uintptr_t>(source) + UnrollSize);
+
+		// Unrolled to mitigate loop overheads.
+		// Ensure the unrolling here matches `UnrollFactor`.
+		while (source < sourceEnd)
+		{
+			destination[0] = source[0];
+			destination[1] = source[1];
+			destination[2] = source[2];
+			destination[3] = source[3];
+			destination += UnrollFactor;
+			source += UnrollFactor;
+		}
+
+		// Copy the remaining whole words.
+		for (size &= UnrollMask; size >= UnrollFactor; size -= UnrollFactor)
+			*destination++ = *source++;
+		if (size == 0)
+			return;
+
+		// Copy trailing tail bytes, as USBDEV only supports 32-bit accesses.
+		if (toDevice)
+		{
+			// Collect final bytes into a word.
+			const volatile uint8_t *trailingBytes =
+			  reinterpret_cast<const volatile uint8_t *>(source);
+			uint32_t partialWord = trailingBytes[0];
+			if (size > 1)
+				partialWord |= trailingBytes[1] << 8;
+			if (size > 2)
+				partialWord |= trailingBytes[2] << 16;
+			// Write the final word to the device.
+			*destination = partialWord;
+		}
+		else
+		{
+			volatile uint8_t *destinationBytes =
+			  reinterpret_cast<volatile uint8_t *>(destination);
+			// Collect the final word from the device.
+			const uint32_t TrailingBytes = *source;
+			// Unpack it into final bytes.
+			destinationBytes[0] = static_cast<uint8_t>(TrailingBytes);
+			if (size > 1)
+				destinationBytes[1] = static_cast<uint8_t>(TrailingBytes >> 8);
+			if (size > 2)
+				destinationBytes[2] = static_cast<uint8_t>(TrailingBytes >> 16);
+		}
+	}
 };
