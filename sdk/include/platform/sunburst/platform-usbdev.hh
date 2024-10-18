@@ -137,10 +137,10 @@ class OpenTitanUsbdev {
 		InterruptLinkInError = 1 << 10,
 		/// Raised when the Available OUT/Setup Buffer FIFO overflows.
 		InterruptAvBufferOverflow = 1 << 9,
-		/// Asserted whilst the Available OUT Buffer FIFO is empty.
-		InterruptAvOutBufferEmpty = 1 << 8,
 		/// Asserted whilst the receive FIFO is full.
-		InterruptRecvFifoFull = 1 << 7,
+		InterruptRecvFifoFull = 1 << 8,
+		/// Asserted whilst the Available OUT Buffer FIFO is empty.
+		InterruptAvOutBufferEmpty = 1 << 7,
 		/// Raised when the link transitions from Suspended to non-Idle.
 		InterruptLinkResume = 1 << 6,
 		/// Raised when the link has entered the suspend state (Idle for > 3ms).
@@ -155,7 +155,7 @@ class OpenTitanUsbdev {
 		InterruptDisconnected = 1 << 2,
 		/// Asserted whilst a packet has been sent but not cleared from `inSent`.
 		InterruptPacketSent = 1 << 1,
-		/// Asserted whilst the receive FIFO is full.
+		/// Asserted whilst the receive FIFO is non-empty.
 		InterruptPacketReceived = 1 << 0,
 	} OpenTitanUsbdevInterrupt;
 
