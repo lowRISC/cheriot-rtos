@@ -3,22 +3,21 @@
 #include <stdint.h>
 
 /**
- * OpenTitan USB Device
+ * A driver for OpenTitan USB Device, which is used in the Sonata board.
  *
  * This peripheral's source and documentation can be found at:
  * https://github.com/lowRISC/opentitan/tree/ab878b5d3578939a04db72d4ed966a56a869b2ed/hw/ip/usbdev
  *
- * Rendered register documentation is served at:
+ * With rendered register documentation served at:
  * https://opentitan.org/book/hw/ip/uart/doc/registers.html
  */
-class OpenTitanUsbdev {
- public:
-  /// USBDEV supports a maximum packet length of 64 bytes.
-  static constexpr uint8_t MaxPacketLen = 64U;
-  /// USBDEV provides 32 buffers.
-  static constexpr uint8_t NumBuffers = 32U;
-  /// USBDEV supports up to 12 endpoints, in each direction.
-  static constexpr uint8_t MaxEndpoints = 12U;
+class OpenTitanUsbdev
+{
+	public:
+	/* Supported sizes for the USB Device. */
+	static constexpr uint8_t MaxPacketLength = 64u;
+	static constexpr uint8_t BufferCount     = 32u;
+	static constexpr uint8_t MaxEndpoints    = 12u;
 
 	/**
 	 * The offset from the start of the USB Device MMIO region at which
@@ -238,190 +237,307 @@ class OpenTitanUsbdev {
 		/* Other PHY Configuration fields are omitted. */
 	};
 
-  /**
-   * Ensure that the Available OUT Buffer and Available SETUP Buffers are kept supplied with
-   * buffers for packet reception. `buf_avail` specifies a bitmap of the buffers that are not
-   * currently committed and the return value is the updated bitmap.
-   */
-  [[nodiscard]] uint64_t supply_buffers(uint64_t buf_avail) volatile {
-		constexpr uint32_t SetupFullBit = static_cast<uint32_t>(UsbStatusField::AvailableSetupFull);
-		constexpr uint32_t OutFullBit = static_cast<uint32_t>(UsbStatusField::AvailableOutFull);
+	/**
+	 * Ensure that the Available OUT and Available SETUP buffers are kept
+	 * supplied with buffers for packet reception.
+	 *
+	 * @param bufferBitmap A bitmap of the buffers that are not currently
+	 * committed (where 1 corresponds to not in use).
+	 * @returns The updated bitmap after supplying buffers.
+	 */
+	[[nodiscard]] uint64_t supply_buffers(uint64_t bufferBitmap) volatile
+	{
+		constexpr uint32_t SetupFullBit =
+		  static_cast<uint32_t>(UsbStatusField::AvailableSetupFull);
+		constexpr uint32_t OutFullBit =
+		  static_cast<uint32_t>(UsbStatusField::AvailableOutFull);
 
-    for (uint8_t buf_num = 0U; buf_num < NumBuffers; buf_num++) {
-      if (buf_avail & (1U << buf_num)) {
-        if (usbStatus & SetupFullBit) {
-          if (usbStatus & OutFullBit) {
-            break;
-          }
-          availableOutBuffer = buf_num;
-        } else {
-          availableSetupBuffer = buf_num;
-        }
-        buf_avail &= ~(1U << buf_num);
-      }
-    }
-    return buf_avail;
-  }
+		for (uint8_t index = 0; index < BufferCount; index++)
+		{
+			const uint32_t Buffer = (1u << index);
+			if (!(bufferBitmap & Buffer))
+				continue; // Skip buffers that are not available
 
-	/// Enable the given interrupt(s).
+			// If a buffer is available, and either Available SETUP or OUT are
+			// not yet full, then commit that buffer and mark it as in use.
+			if (usbStatus & SetupFullBit)
+			{
+				if (usbStatus & OutFullBit)
+					break; // Both are full - stop trying to supply buffers.
+				availableOutBuffer = index;
+			}
+			else
+			{
+				availableSetupBuffer = index;
+			}
+			bufferBitmap &= ~Buffer;
+		}
+		return bufferBitmap;
+	}
+
+	/**
+	 * Enable a specified interrupt / interrupts.
+	 */
 	void interrupt_enable(UsbdevInterrupt interrupt) volatile
 	{
 		interruptEnable = interruptEnable | static_cast<uint32_t>(interrupt);
 	}
 
-	/// Disable the given interrupt(s).
+	/**
+	 * Disable a specified interrupt / interrupts.
+	 */
 	void interrupt_disable(UsbdevInterrupt interrupt) volatile
 	{
 		interruptEnable = interruptEnable & ~static_cast<uint32_t>(interrupt);
 	}
 
-  /**
-   * Initialise the USB device, ensuring that packet buffers are available for reception and that
-   * the PHY has been configured. Note that at this endpoints have not been configured and the
-   * device has not been connected to the USB.
-   */
-  [[nodiscard]] int init(uint64_t &buf_avail) volatile {
-    buf_avail = supply_buffers(((uint64_t)1U << NumBuffers) - 1U);
-		phyConfig = static_cast<uint32_t>(PhyConfigField::UseDifferentialReceiver);
-    return 0;
-  }
+	/**
+	 * Initialise the USB device, ensuring that packet buffers are available for
+	 * reception and that the PHY has been appropriately configured. Note that
+	 * at this stage, endpoints have not been configured and the device has not
+	 * been connected to the USB.
+	 *
+	 * @param bufferBitmap An out-parameter, to initialise a bitmap of the
+	 * buffers that are not currently commited (1 corresponds to not in use).
+	 *
+	 * @returns 0 if initialisation is sucessful, and non-zero otherwise.
+	 */
+	[[nodiscard]] int init(uint64_t &bufferBitmap) volatile
+	{
+		bufferBitmap =
+		  supply_buffers((static_cast<uint64_t>(1u) << BufferCount) - 1u);
+		phyConfig =
+		  static_cast<uint32_t>(PhyConfigField::UseDifferentialReceiver);
+		return 0;
+	}
 
-  /**
-   * Set up the configuration of an OUT endpoint.
-   */
-  [[nodiscard]] int configure_out_endpoint(uint8_t ep, bool enabled, bool setup, bool iso) volatile {
-    if (ep < MaxEndpoints) {
-      const uint32_t epMask = 1u << ep;
-      endpointOutEnable     = (endpointOutEnable & ~epMask) | (enabled ? epMask : 0u);
-      receiveEnableSetup    = (receiveEnableSetup & ~epMask) | (setup ? epMask : 0U);
-      receiveEnableOut      = (receiveEnableOut & ~epMask) | (enabled ? epMask : 0u);
-      outIsochronous        = (outIsochronous & ~epMask) | (iso ? epMask : 0u);
-      return 0;
-    }
-    return -1;
-  }
+	/**
+	 * Setup the configuration of an OUT endpoint for the USB device.
+	 *
+	 * @param endpointId The ID of the OUT endpoint to configure.
+	 * @param enabled Whether the OUT endpoint should be enabled or not.
+	 * @param setup Whether SETUP transactions should be enabled for the
+	 * endpoint.
+	 * @param isochronous Whether the endpoint should operate isochronously or
+	 * non-isochronously.
+	 *
+	 * @returns 0 if configuration is successful, and non-zero otherwise.
+	 */
+	[[nodiscard]] int configure_out_endpoint(uint8_t endpointId,
+	                                         bool    enabled,
+	                                         bool    setup,
+	                                         bool    isochronous) volatile
+	{
+		if (endpointId >= MaxEndpoints)
+			return -1;
 
-  /**
-   * Set up the configuration of an IN endpoint.
-   */
-  [[nodiscard]] int configure_in_endpoint(uint8_t ep, bool enabled, bool iso) volatile {
-    if (ep < MaxEndpoints) {
-      const uint32_t epMask = 1u << ep;
-      endpointInEnable      = (endpointInEnable & ~epMask) | (enabled ? epMask : 0u);
-      inIsochronous         = (inIsochronous & ~epMask) | (iso ? epMask : 0u);
-      return 0;
-    }
-    return -1;
-  }
+		const uint32_t Mask = 1u << endpointId;
+		endpointOutEnable = (endpointOutEnable & ~Mask) | (enabled ? Mask : 0u);
+		outIsochronous = (outIsochronous & ~Mask) | (isochronous ? Mask : 0u);
+		receiveEnableSetup = (receiveEnableSetup & ~Mask) | (setup ? Mask : 0u);
+		receiveEnableOut   = (receiveEnableOut & ~Mask) | (enabled ? Mask : 0u);
+		return 0;
+	}
 
-  /**
-   * Set the STALL state of the specified endpoint pair (IN and OUT).
-   */
-  [[nodiscard]] int set_ep_stalling(uint8_t ep, bool stalling) volatile {
-    if (ep < MaxEndpoints) {
-      const uint32_t epMask = 1u << ep;
-      outStall              = (outStall & ~epMask) | (stalling ? epMask : 0U);
-      inStall               = (inStall & ~epMask) | (stalling ? epMask : 0U);
-      return 0;
-    }
-    return -1;
-  }
+	/**
+	 * Setup the configuration of an IN endpoint for the USB device.
+	 *
+	 * @param endpointId The ID of the IN endpoint to configure
+	 * @param enabled Whether the IN endpoint should be enabled or not.
+	 * @param isochronous Whether the endpoint should operate isochronously or
+	 * non-isochronously.
+	 *
+	 * @returns 0 if configuration is successful, and non-zero otherwise.
+	 */
+	[[nodiscard]] int configure_in_endpoint(uint8_t endpointId,
+	                                        bool    enabled,
+	                                        bool    isochronous) volatile
+	{
+		if (endpointId >= MaxEndpoints)
+			return -1;
 
-  /**
-   * Connect the device to the USB, indicating its presence to the USB host controller.
-   * Endpoints must already have been configured at this point because traffic may be received
-   * imminently.
-   */
-  [[nodiscard]] int connect() volatile {
-		usbControl = usbControl | static_cast<uint32_t>(UsbControlField::Enable);
-    return 0;
-  }
+		const uint32_t Mask = 1u << endpointId;
+		endpointInEnable = (endpointInEnable & ~Mask) | (enabled ? Mask : 0u);
+		inIsochronous    = (inIsochronous & ~Mask) | (isochronous ? Mask : 0u);
+		return 0;
+	}
 
-  /**
-   * Disconnect the device from the USB.
-   */
-  [[nodiscard]] int disconnect() volatile {
-		usbControl = usbControl & ~static_cast<uint32_t>(UsbControlField::Enable);
-    return 0;
-  }
+	/**
+	 * Set the STALL state of a specified endpoint pair (both IN and OUT).
+	 *
+	 * @param endpointId The ID of the endpoint pair to modify.
+	 * @param stalling Whether the endpoints are stalling or not.
+	 *
+	 * @returns 0 if successful, and non-zero otherwise.
+	 */
+	[[nodiscard]] int set_endpoint_stalling(uint8_t endpointId,
+	                                        bool    stalling) volatile
+	{
+		if (endpointId >= MaxEndpoints)
+			return -1;
 
-  /**
-   * Indicate whether the USB device is connected (pullup enabled).
-   */
+		const uint32_t Mask = 1u << endpointId;
+		outStall            = (outStall & ~Mask) | (stalling ? Mask : 0u);
+		inStall             = (inStall & ~Mask) | (stalling ? Mask : 0u);
+		return 0;
+	}
+
+	/**
+	 * Connect the device to the USB, indicating its presence to the USB host
+	 * controller. Endpoints must already have been configured at this point
+	 * because traffic may be received imminently.
+	 *
+	 * @returns 0 if successful, and non-zero otherwise.
+	 */
+	[[nodiscard]] int connect() volatile
+	{
+		usbControl =
+		  usbControl | static_cast<uint32_t>(UsbControlField::Enable);
+		return 0;
+	}
+
+	/**
+	 * Disconnect the device from the USB.
+	 *
+	 * @returns 0 if successful, and non-zero otherwise.
+	 */
+	[[nodiscard]] int disconnect() volatile
+	{
+		usbControl =
+		  usbControl & ~static_cast<uint32_t>(UsbControlField::Enable);
+		return 0;
+	}
+
+	/**
+	 * Check whether the USB device is connected (i.e. pullup enabled).
+	 *
+	 * @returns True to indicate it is connected, and false otherwise.
+	 */
 	[[nodiscard]] bool connected() volatile
 	{
 		return (usbControl & static_cast<uint32_t>(UsbControlField::Enable));
 	}
 
-  /**
-   * Set the device address on the USB; this address will have been supplied by the USB host
-   * controller in the standard `SET_ADDRESS` Control Transfer.
-   */
-  [[nodiscard]] int set_device_address(uint8_t address) volatile {
-    if (address < 0x80) {
-		  constexpr uint32_t Mask = static_cast<uint32_t>(UsbControlField::DeviceAddress);
-		  usbControl = (usbControl & ~Mask) | (address << 16);
-      return 0;
-    }
-    return -1;
-  }
+	/**
+	 * Set the device address on the USB; this address will have been supplied
+	 * by the USB host controller in the standard `SET_ADDRESS` Control
+	 * Transfer.
+	 *
+	 * @param address The device address to set on the USB.
+	 *
+	 * @returns 0 if successful, and non-zero otherwise.
+	 */
+	[[nodiscard]] int set_device_address(uint8_t address) volatile
+	{
+		if (address >= 0x80)
+			return -1; // Device addresses are only 7 bits long.
 
-  /**
-   * Check for and return the endpoint number and buffer number of a recently-collected IN data
-   * packet. The caller is responsible for reusing or releasing the buffer.
-   */
-  [[nodiscard]] int packet_collected(uint8_t &ep, uint8_t &buf_num) volatile {
-		constexpr uint32_t BufferIdMask = static_cast<uint32_t>(ConfigInField::BufferId);
-    uint32_t sent = inSent;
-    // Clear first packet sent indication.
-    for (ep = 0U; ep < MaxEndpoints; ep++) {
-      uint32_t epMask = 1U << ep;
-      if (sent & epMask) {
-        // Clear the `in_sent` bit for this specific endpoint.
-        inSent = epMask;
-        // Indicate which buffer has been released.
-        buf_num = (configIn[ep] & BufferIdMask) >> 0;
-        return 0;
-      }
-    }
-    return -1;
-  }
+		constexpr uint32_t Mask =
+		  static_cast<uint32_t>(UsbControlField::DeviceAddress);
+		usbControl = (usbControl & ~Mask) | (address << 16);
+		return 0;
+	}
 
-  /**
-   * Present a packet on the specified IN endpoint for collection by the USB host controller.
-   */
-  [[nodiscard]] int send_packet(uint8_t buf_num, uint8_t ep, const uint32_t *data, uint8_t size) volatile {
-    // Transmission of Zero Length Packets is common over the USB.
-    if (size) {
-      usbdev_transfer((uint32_t *)buffers(buf_num), data, size, true);
-    }
-		constexpr uint32_t ReadyBit = static_cast<uint32_t>(ConfigInField::Ready);
-    configIn[ep] = (buf_num << 0) | (size << 8);
-    configIn[ep] = configIn[ep] | ReadyBit;
-    return 0;
-  }
+	/**
+	 * Check and retrieve the endpoint and buffer numbers of a
+	 * recently-collected IN data packet. The caller is responsible for reusing
+	 * or releasing the buffer.
+	 *
+	 * @param endpointId An out-parameter, to which the ID of the endpoint for
+	 * a recently-collected IN data packet will be written.
+	 * @param bufferId An out-parameter, to which the ID of the buffer for a
+	 * recently-collected IN data packet will be written.
+	 *
+	 * @returns 0 if successful, and non-zero otherwise.
+	 */
+	[[nodiscard]] int retrieve_collected_packet(uint8_t &endpointId,
+	                                            uint8_t &bufferId) volatile
+	{
+		constexpr uint32_t BufferIdMask =
+		  static_cast<uint32_t>(ConfigInField::BufferId);
+		uint32_t sent = inSent;
 
-  /**
-   * Test for and collect the next received packet.
-   */
-  [[nodiscard]] int recv_packet(uint8_t &ep, uint8_t &buf_num, uint16_t &size, bool &is_setup,
-                                uint32_t *data) volatile {
-    if (usbStatus & static_cast<uint32_t>(UsbStatusField::ReceiveDepth)) {
-      uint32_t rx = receiveBuffer;  // FIFO, single word read required.
+		// Clear the first encountered packet sent indication.
+		for (endpointId = 0; endpointId < MaxEndpoints; endpointId++)
+		{
+			const uint32_t EndpointBit = 1u << endpointId;
+			if (sent & EndpointBit)
+			{
+				// Clear the `in_sent` bit for this specific endpoint, and
+				// indicate which buffer has been released.
+				inSent   = EndpointBit;
+				bufferId = (configIn[endpointId] & BufferIdMask);
+				return 0;
+			}
+		}
 
-      typedef ReceiveBufferField Reg;
-      ep       = (rx & static_cast<uint32_t>(Reg::EndpointId)) >> 20;
-      size     = (rx & static_cast<uint32_t>(Reg::Size)) >> 8;
-      is_setup = (rx & static_cast<uint32_t>(Reg::Setup)) != 0U;
-      buf_num  = rx & static_cast<uint32_t>(Reg::BufferId);
-      // Reception of Zero Length Packets occurs in the Status Stage of IN Control Transfers.
-      if (size) {
-        usbdev_transfer(data, (uint32_t *)buffers(buf_num), size, false);
-      }
-      return 0;
-    }
-    return -1;
-  }
+		// If no packet sent indications were found, then fail.
+		return -1;
+	}
+
+	/**
+	 * Present a packet on the specified IN endpoint for collection by the USB
+	 * host controller.
+	 *
+	 * @param bufferId The buffer to use to store the packet.
+	 * @param endpointId The IN endpoint used to send the packet.
+	 * @param data The packet to be transmitted.
+	 * @param size The size of the packet.
+	 *
+	 * @returns 0 if successful, or non-zero if not successful.
+	 */
+	[[nodiscard]] int packet_send(uint8_t         bufferId,
+	                              uint8_t         endpointId,
+	                              const uint32_t *data,
+	                              uint8_t         size) volatile
+	{
+		// Transmission of zero length packets is common over USB
+		if (size > 0)
+			usbdev_transfer(buffers(bufferId), data, size, true);
+
+		constexpr uint32_t ReadyBit =
+		  static_cast<uint32_t>(ConfigInField::Ready);
+		configIn[endpointId] = bufferId | (size << 8);
+		configIn[endpointId] = configIn[endpointId] | ReadyBit;
+		return 0;
+	}
+
+	/**
+	 * Test for and collect the next received packet.
+	 *
+	 * @param bufferId An out-parameter storing the buffer ID used
+	 * @param endpointId An out-parameter storing the endpoint received on.
+	 * @param size An out-parameter storing the size of the received packet.
+	 * @param isSetup A boolean out-parameter. True means the received packet
+	 * was a SETUP packet, false means it was not.
+	 * @param destination A destination buffer to read the packet's data into.
+	 *
+	 * @returns 0 if successful, or non-zero if not successful.
+	 */
+	[[nodiscard]] int packet_receive(uint8_t  &bufferId,
+	                                 uint8_t  &endpointId,
+	                                 uint16_t &size,
+	                                 bool     &isSetup,
+	                                 uint32_t *destination) volatile
+	{
+		if (!(usbStatus & static_cast<uint32_t>(UsbStatusField::ReceiveDepth)))
+			return -1; // No packets received
+
+		uint32_t received = receiveBuffer;
+
+		typedef ReceiveBufferField Reg;
+		endpointId = (received & static_cast<uint32_t>(Reg::EndpointId)) >> 20;
+		size       = (received & static_cast<uint32_t>(Reg::Size)) >> 8;
+		isSetup    = (received & static_cast<uint32_t>(Reg::Setup)) != 0;
+		bufferId   = (received & static_cast<uint32_t>(Reg::BufferId)) >> 0;
+
+		// Reception of Zero Length Packets occurs in the Status Stage of IN
+		// Control Transfers.
+		if (size > 0)
+			usbdev_transfer(destination, buffers(bufferId), size, false);
+
+		return 0;
+	}
 
 	private:
 	/**
@@ -434,7 +550,7 @@ class OpenTitanUsbdev {
 	 */
 	volatile uint32_t *buffers(uint8_t bufferId) volatile
 	{
-		const uint32_t Offset = BufferStartAddress + bufferId * MaxPacketLen;
+		const uint32_t Offset = BufferStartAddress + bufferId * MaxPacketLength;
 		const uintptr_t Address = reinterpret_cast<uintptr_t>(this) + Offset;
 		return reinterpret_cast<uint32_t *>(Address);
 	}
@@ -458,7 +574,7 @@ class OpenTitanUsbdev {
 		// Unroll word transfer. Each word transfer is 4 bytes, so we must round
 		// to the closest multiple of (4 * words) when unrolling.
 		constexpr uint8_t  UnrollFactor = 4u;
-		constexpr uint32_t UnrollMask   = 0xF;
+		constexpr uint32_t UnrollMask   = (UnrollFactor * 4u) - 1;
 
 		// Round down to the previous multiple for unrolling
 		const uint32_t  UnrollSize = (size & ~UnrollMask);
