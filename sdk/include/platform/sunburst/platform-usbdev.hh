@@ -9,7 +9,7 @@
  * https://github.com/lowRISC/opentitan/tree/ab878b5d3578939a04db72d4ed966a56a869b2ed/hw/ip/usbdev
  *
  * With rendered register documentation served at:
- * https://opentitan.org/book/hw/ip/uart/doc/registers.html
+ * https://opentitan.org/book/hw/ip/usbdev/doc/registers.html
  */
 class OpenTitanUsbdev
 {
