@@ -20,101 +20,66 @@ class OpenTitanUsbdev {
   /// USBDEV supports up to 12 endpoints, in each direction.
   static constexpr uint8_t MaxEndpoints = 12U;
 
-  /* Register definitions for the relevant parts of the OpenTitan USBDEV block; see above for
-   * documentation.
-   */
+	/**
+	 * Register definitions for the OpenTitan USB device. Each register is 4
+	 * bytes in length, defined sequentially with no gaps in memory.
+	 *
+	 * Documentation source:
+	 * https://opentitan.org/book/hw/ip/uart/doc/registers.html
+	 */
+	uint32_t interruptState;
+	uint32_t interruptEnable;
+	uint32_t interruptTest;
+	uint32_t alertTest;
+	uint32_t usbControl;
+	uint32_t endpointOutEnable;
+	uint32_t endpointInEnable;
+	uint32_t usbStatus;
+	uint32_t availableOutBuffer;
+	uint32_t availableSetupBuffer;
+	uint32_t receiveBuffer;
+	/* Register to enable receive SETUP transactions */
+	uint32_t receiveEnableSetup;
+	/* Register to enable receive OUT transactions */
+	uint32_t receiveEnableOut;
+	/* Register to set NAK (Not/Negated Acknowledge) after OUT transactions */
+	uint32_t setNotAcknowledgeOut;
+	/* Register showing ACK receival to indicate a successful IN send */
+	uint32_t inSent;
+	/* Registers for controlling the stalling of OUT and IN endpoints */
+	uint32_t outStall;
+	uint32_t inStall;
+	/**
+	 * IN transaction configuration registers. There is one register per
+	 * endpoint for the USB device.
+	 */
+	uint32_t configIn[MaxEndpoints];
+	/**
+	 * Registers for configuring which endpoints should be treated as
+	 * isochronous endpoints. This means that if the corresponding bit is set,
+	 * then that no handshake packet will be sent for an OUT/IN transaction on
+	 * that endpoint.
+	 */
+	uint32_t outIsochronous;
+	uint32_t inIsochronous;
+	/* Registers for configuring if endpoints data toggle on transactions */
+	uint32_t outDataToggle;
+	uint32_t inDataToggle;
 
-  /**
-   * Interrupt State Register.
-   */
-  uint32_t interruptState;
-  /**
-   * Interrupt Enable Register.
-   */
-  uint32_t interruptEnable;
-  /**
-   * Interrupt Test Register.
-   */
-  uint32_t interruptTest;
-  /**
-   * Alert Test Register.
-   */
-  uint32_t alertTest;
-  /**
-   * USB Control Register.
-   */
-  uint32_t usbCtrl;
-  /**
-   * OUT Endpoint Enable Register.
-   */
-  uint32_t epOutEnable;
-  /**
-   * IN Endpoint Enable Register.
-   */
-  uint32_t epInEnable;
-  /**
-   * USB Status Register.
-   */
-  uint32_t usbStat;
-  /**
-   * Available OUT Buffer FIFO.
-   */
-  uint32_t avOutBuffer;
-  /**
-   * Available SETUP Buffer FIFO.
-   */
-  uint32_t avSetupBuffer;
-  /**
-   * RX FIFO.
-   */
-  uint32_t rxFIFO;
-  /**
-   * SETUP Reception Enable Register.
-   */
-  uint32_t rxEnableSETUP;
-  /**
-   * OUT Reception Enable Register.
-   */
-  uint32_t rxEnableOUT;
-  uint32_t pad0;
-  /**
-   * In Sent Register.
-   */
-  uint32_t inSent;
-  /**
-   * Out STALL Register.
-   */
-  uint32_t outStall;
-  /**
-   * In STALL Register.
-   */
-  uint32_t inStall;
-  /**
-   * Config IN Registers.
-   */
-  uint32_t configIn[MaxEndpoints];
-  /**
-   * Out Iso Register.
-   */
-  uint32_t outIso;
-  /**
-   * In Iso Register.
-   */
-  uint32_t inIso;
-  /**
-   * Out Data Toggle Register.
-   */
-  uint32_t outDataToggle;
-  /**
-   * In Data Toggle Register.
-   */
-  uint32_t inDataToggle;
-  uint32_t pad1;
-  uint32_t pad2;
-  /**
-   * PHY Config Register.
-   */
-  uint32_t phyConfig;
+	private:
+	/**
+	 * Registers to sense/drive the USB PHY pins. That is, these registers can
+	 * be used to respectively read out the state of the USB device inputs and
+	 * outputs, or to control the inputs and outputs from software. These
+	 * registers are kept private as they are intended to be used for debugging
+	 * purposes or during chip testing, and not in actual software.
+	 */
+	[[maybe_unused]] uint32_t phyPinsSense;
+	[[maybe_unused]] uint32_t phyPinsDrive;
+
+	public:
+	/* Config register for the USB PHY pins. */
+	uint32_t phyConfig;
 
 	/// OpenTitan USBDEV Interrupts
 	typedef enum [[clang::flag_enum]]
@@ -192,13 +157,13 @@ class OpenTitanUsbdev {
   [[nodiscard]] uint64_t supply_buffers(uint64_t buf_avail) volatile {
     for (uint8_t buf_num = 0U; buf_num < NumBuffers; buf_num++) {
       if (buf_avail & (1U << buf_num)) {
-        if (usbStat & usbStatAvSetupFull) {
-          if (usbStat & usbStatAvOutFull) {
+        if (usbStatus & usbStatAvSetupFull) {
+          if (usbStatus & usbStatAvOutFull) {
             break;
           }
-          avOutBuffer = buf_num;
+          availableOutBuffer = buf_num;
         } else {
-          avSetupBuffer = buf_num;
+          availableSetupBuffer = buf_num;
         }
         buf_avail &= ~(1U << buf_num);
       }
@@ -235,10 +200,10 @@ class OpenTitanUsbdev {
   [[nodiscard]] int configure_out_endpoint(uint8_t ep, bool enabled, bool setup, bool iso) volatile {
     if (ep < MaxEndpoints) {
       const uint32_t epMask = 1u << ep;
-      epOutEnable           = (epOutEnable & ~epMask) | (enabled ? epMask : 0u);
-      rxEnableSETUP         = (rxEnableSETUP & ~epMask) | (setup ? epMask : 0U);
-      rxEnableOUT           = (rxEnableOUT & ~epMask) | (enabled ? epMask : 0u);
-      outIso                = (outIso & ~epMask) | (iso ? epMask : 0u);
+      endpointOutEnable     = (endpointOutEnable & ~epMask) | (enabled ? epMask : 0u);
+      receiveEnableSetup    = (receiveEnableSetup & ~epMask) | (setup ? epMask : 0U);
+      receiveEnableOut      = (receiveEnableOut & ~epMask) | (enabled ? epMask : 0u);
+      outIsochronous        = (outIsochronous & ~epMask) | (iso ? epMask : 0u);
       return 0;
     }
     return -1;
@@ -250,8 +215,8 @@ class OpenTitanUsbdev {
   [[nodiscard]] int configure_in_endpoint(uint8_t ep, bool enabled, bool iso) volatile {
     if (ep < MaxEndpoints) {
       const uint32_t epMask = 1u << ep;
-      epInEnable            = (epInEnable & ~epMask) | (enabled ? epMask : 0u);
-      inIso                 = (inIso & ~epMask) | (iso ? epMask : 0u);
+      endpointInEnable      = (endpointInEnable & ~epMask) | (enabled ? epMask : 0u);
+      inIsochronous         = (inIsochronous & ~epMask) | (iso ? epMask : 0u);
       return 0;
     }
     return -1;
@@ -276,7 +241,7 @@ class OpenTitanUsbdev {
    * imminently.
    */
   [[nodiscard]] int connect() volatile {
-    usbCtrl = usbCtrl | usbCtrlEnable;
+    usbControl = usbControl | usbCtrlEnable;
     return 0;
   }
 
@@ -284,14 +249,14 @@ class OpenTitanUsbdev {
    * Disconnect the device from the USB.
    */
   [[nodiscard]] int disconnect() volatile {
-    usbCtrl = usbCtrl & ~usbCtrlEnable;
+    usbControl = usbControl & ~usbCtrlEnable;
     return 0;
   }
 
   /**
    * Indicate whether the USB device is connected (pullup enabled).
    */
-  [[nodiscard]] bool connected() volatile { return (usbCtrl & usbCtrlEnable) != 0; }
+  [[nodiscard]] bool connected() volatile { return (usbControl & usbCtrlEnable) != 0; }
 
   /**
    * Set the device address on the USB; this address will have been supplied by the USB host
@@ -299,7 +264,7 @@ class OpenTitanUsbdev {
    */
   [[nodiscard]] int set_device_address(uint8_t address) volatile {
     if (address < 0x80) {
-      usbCtrl = (usbCtrl & ~usbCtrlDeviceAddr) | (address << usbCtrlDeviceAddrShift);
+      usbControl = (usbControl & ~usbCtrlDeviceAddr) | (address << usbCtrlDeviceAddrShift);
       return 0;
     }
     return -1;
@@ -343,8 +308,8 @@ class OpenTitanUsbdev {
    */
   [[nodiscard]] int recv_packet(uint8_t &ep, uint8_t &buf_num, uint16_t &size, bool &is_setup,
                                 uint32_t *data) volatile {
-    if (usbStat & usbStatRxDepth) {
-      uint32_t rx = rxFIFO;  // FIFO, single word read required.
+    if (usbStatus & usbStatRxDepth) {
+      uint32_t rx = receiveBuffer;  // FIFO, single word read required.
 
       ep       = (rx & rxFifoEp) >> rxFifoEpShift;
       size     = (rx & rxFifoSize) >> rxFifoSizeShift;
