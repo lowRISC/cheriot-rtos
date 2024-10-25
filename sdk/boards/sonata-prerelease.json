@@ -96,7 +96,7 @@
         "../include/platform/ibex",
         "../include/platform/generic-riscv"
     ],
-    "timer_hz" : 30000000,
+    "timer_hz" : 40000000,
     "tickrate_hz" : 100,
     "revoker" : "hardware",
     "stack_high_water_mark" : true,
