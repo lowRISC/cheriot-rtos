@@ -9,7 +9,6 @@
 #include <locks.hh>
 #include <optional>
 #include <platform/concepts/ethernet.hh>
-#include <platform/sunburst/platform-gpio.hh>
 #include <platform/sunburst/platform-spi.hh>
 #include <thread.h>
 #include <type_traits>
@@ -57,12 +56,13 @@ class Ksz8851Ethernet
 	using Capability = CHERI::Capability<T>;
 
 	/**
-	 * GPIO output pins to be used
+	 * Ethernet Chip Select and Reset are mapped to different Chip Select
+	 * lines of SPI0. This enum represents which chip select represents which.
 	 */
-	enum class GpioPin : uint8_t
+	enum class EthernetLine : uint8_t
 	{
-		EthernetChipSelect = 13,
-		EthernetReset      = 14,
+		ChipSelect = 0,
+		Reset      = 1,
 	};
 
 	/**
@@ -307,15 +307,14 @@ class Ksz8851Ethernet
 	const uint32_t *receiveInterruptFutex;
 
 	/**
-	 * Set value of a GPIO output.
+	 * Sets the value of a specific Chip Select of SPI0. These Chip Select
+	 * lines are used to control both the Ethernet's Chip Select, as well
+	 * as its Reset signal (in place of e.g. a GPIO pin).
 	 */
-	inline void set_gpio_output_bit(GpioPin pin, bool value) const
+	inline void set_chip_select(EthernetLine chipSelect, bool value) const
 	{
-		uint32_t shift  = static_cast<uint8_t>(pin);
-		uint32_t output = gpio()->output;
-		output &= ~(1 << shift);
-		output |= value << shift;
-		gpio()->output = output;
+		const uint32_t CsBit = (1u << static_cast<uint8_t>(chipSelect));
+		spi()->cs = value ? (spi()->cs | CsBit) : (spi()->cs & ~CsBit);
 	}
 
 	/**
@@ -350,11 +349,11 @@ class Ksz8851Ethernet
 		           (byteEnable << 2) | (addr >> 6);
 		bytes[1] = (addr << 2) & 0b11110000;
 
-		set_gpio_output_bit(GpioPin::EthernetChipSelect, false);
+		set_chip_select(EthernetLine::ChipSelect, false);
 		spi()->blocking_write(bytes, sizeof(bytes));
 		uint16_t val;
 		spi()->blocking_read(reinterpret_cast<uint8_t *>(&val), sizeof(val));
-		set_gpio_output_bit(GpioPin::EthernetChipSelect, true);
+		set_chip_select(EthernetLine::ChipSelect, true);
 		return val;
 	}
 
@@ -371,11 +370,11 @@ class Ksz8851Ethernet
 		           (byteEnable << 2) | (addr >> 6);
 		bytes[1] = (addr << 2) & 0b11110000;
 
-		set_gpio_output_bit(GpioPin::EthernetChipSelect, false);
+		set_chip_select(EthernetLine::ChipSelect, false);
 		spi()->blocking_write(bytes, sizeof(bytes));
 		spi()->blocking_write(reinterpret_cast<uint8_t *>(&val), sizeof(val));
 		spi()->wait_idle();
-		set_gpio_output_bit(GpioPin::EthernetChipSelect, true);
+		set_chip_select(EthernetLine::ChipSelect, true);
 	}
 
 	/**
@@ -397,20 +396,11 @@ class Ksz8851Ethernet
 	}
 
 	/**
-	 * Helper.  Returns a pointer to the SPI device.
+	 * Helper. Returns a pointer to the SPI device.
 	 */
 	[[nodiscard, gnu::always_inline]] Capability<volatile SonataSpi> spi() const
 	{
-		return MMIO_CAPABILITY(SonataSpi, spi2);
-	}
-
-	/**
-	 * Helper.  Returns a pointer to the GPIO device.
-	 */
-	[[nodiscard, gnu::always_inline]] Capability<volatile SonataGPIO>
-	gpio() const
-	{
-		return MMIO_CAPABILITY(SonataGPIO, gpio);
+		return MMIO_CAPABILITY(SonataSpi, spi_ethmac);
 	}
 
 	/**
@@ -435,10 +425,10 @@ class Ksz8851Ethernet
 	RecursiveMutex receiveBufferMutex;
 
 	/**
-	 * Reads and writes of the GPIO space use the same bits of the MMIO region
-	 * and so need to be protected.
+	 * Lock to protect reads/writes to the SPI Chip Selects, which use the
+	 * same bits of the MMIO region and thus need to be protected.
 	 */
-	FlagLockPriorityInherited gpioLock;
+	FlagLockPriorityInherited chipSelectLock;
 
 	/**
 	 * Buffer used by receive_frame.
@@ -455,9 +445,9 @@ class Ksz8851Ethernet
 		receiveBuffer  = std::make_unique<uint8_t[]>(MaxFrameSize);
 
 		// Reset chip. It needs to be hold in reset for at least 10ms.
-		set_gpio_output_bit(GpioPin::EthernetReset, false);
+		set_chip_select(EthernetLine::Reset, false);
 		thread_millisecond_wait(20);
-		set_gpio_output_bit(GpioPin::EthernetReset, true);
+		set_chip_select(EthernetLine::Reset, true);
 
 		uint16_t chipId = register_read(RegisterOffset::ChipIdEnable);
 		Debug::log("Chip ID is {}", chipId);
@@ -626,7 +616,7 @@ class Ksz8851Ethernet
 
 	std::optional<Frame> receive_frame()
 	{
-		LockGuard g{gpioLock};
+		LockGuard g{chipSelectLock};
 		if (framesToProcess == 0)
 		{
 			uint16_t isr = register_read(RegisterOffset::InterruptStatus);
@@ -700,7 +690,7 @@ class Ksz8851Ethernet
 
 			// Start receiving via SPI.
 			uint8_t cmd = static_cast<uint8_t>(SpiCommand::ReadDma) << 6;
-			set_gpio_output_bit(GpioPin::EthernetChipSelect, false);
+			set_chip_select(EthernetLine::ChipSelect, false);
 			spi()->blocking_write(&cmd, 1);
 
 			// Initial words are ReceiveFrameHeaderStatus and
@@ -710,7 +700,7 @@ class Ksz8851Ethernet
 
 			spi()->blocking_read(receiveBuffer.get(), paddedLength);
 
-			set_gpio_output_bit(GpioPin::EthernetChipSelect, true);
+			set_chip_select(EthernetLine::ChipSelect, true);
 
 			register_clear(RegisterOffset::ReceiveQueueCommand, StartDmaAccess);
 			framesToProcess -= 1;
@@ -766,7 +756,7 @@ class Ksz8851Ethernet
 			return false;
 		}
 
-		LockGuard g{gpioLock};
+		LockGuard g{chipSelectLock};
 
 		// Wait for the transmit buffer to be available on the device side.
 		// This needs to include the header.
@@ -782,7 +772,7 @@ class Ksz8851Ethernet
 
 		// Start sending via SPI.
 		uint8_t cmd = static_cast<uint8_t>(SpiCommand::WriteDma) << 6;
-		set_gpio_output_bit(GpioPin::EthernetChipSelect, false);
+		set_chip_select(EthernetLine::ChipSelect, false);
 		spi()->blocking_write(&cmd, 1);
 
 		uint32_t header = static_cast<uint32_t>(length) << 16;
@@ -792,7 +782,7 @@ class Ksz8851Ethernet
 		spi()->blocking_write(transmitBuffer.get(), paddedLength);
 
 		spi()->wait_idle();
-		set_gpio_output_bit(GpioPin::EthernetChipSelect, true);
+		set_chip_select(EthernetLine::ChipSelect, true);
 
 		// Stop QMU DMA transfer operation.
 		register_clear(RegisterOffset::ReceiveQueueCommand, StartDmaAccess);
