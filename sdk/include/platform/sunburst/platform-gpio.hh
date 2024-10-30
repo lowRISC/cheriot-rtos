@@ -9,14 +9,15 @@
  * Note that up to 3 of these bits may be asserted at any given time: pressing
  * down the joystick whilst pushing it in a diagonal direction (i.e. 2 cardinal
  * directions).
+ *
  */
-enum class SonataJoystick : uint8_t
+enum class SonataJoystick : uint16_t
 {
-	Left    = 1 << 0,
-	Up      = 1 << 1,
-	Pressed = 1 << 2,
-	Down    = 1 << 3,
-	Right   = 1 << 4,
+	Left    = 1u << 8,
+	Up      = 1u << 9,
+	Pressed = 1u << 10,
+	Down    = 1u << 11,
+	Right   = 1u << 12,
 };
 
 /**
@@ -30,11 +31,11 @@ enum class SonataJoystick : uint8_t
  *
  * Documentation source can be found at:
  * https://github.com/lowRISC/sonata-system/blob/a51f663fe042f07adc0d7a38601f6a5d8f91c6e6/doc/ip/gpio.md
+ * TODO: update this source when documentation is updated
  *
  * Rendered documentation is served from:
  * https://lowrisc.org/sonata-system/doc/ip/gpio.html
  */
-template<class T>
 struct SonataGpioBase
 {
 	uint32_t output;
@@ -46,19 +47,28 @@ struct SonataGpioBase
 	 * The mask of bits of the `output` register that contain meaningful
 	 * GPIO output.
 	 */
-	static const uint32_t OutputMask = 0xFFFF'FFFF;
+	static constexpr uint32_t OutputMask()
+	{
+		return 0xFFFF'FFFF;
+	}
 
 	/**
 	 * The mask of bits of the `input` and `debouncedInput` registers that
 	 * contain meaningful GPIO input.
 	 */
-	static const uint32_t InputMask = 0xFFFF'FFFF;
+	static constexpr uint32_t InputMask()
+	{
+		return 0xFFFF'FFFF;
+	}
 
 	/**
-	 * The mask of bits of the `outputEnable` register that correspond to
-	 * GPIO pins which can have their output enabled or disabled.
+	 * Returns the bit corresponding to a given GPIO index. Will mask out
+	 * the bit if this is outside of the provided mask.
 	 */
-	static const uint32_t OutputEnableMask = 0xFFFF'FFFF;
+	static constexpr uint32_t OutputEnableMask()
+	{
+		return 0xFFFF'FFFF;
+	}
 
 	/**
 	 * Returns the bit corresponding to a given GPIO index. Will mask out
@@ -77,7 +87,7 @@ struct SonataGpioBase
 	 */
 	void set_output(uint32_t index, bool value) volatile
 	{
-		const uint32_t Bit = gpio_bit(index, T::OutputMask);
+		const uint32_t Bit = gpio_bit(index, OutputMask());
 		if (value)
 		{
 			output = output | Bit;
@@ -95,7 +105,7 @@ struct SonataGpioBase
 	 */
 	void set_output_enable(uint32_t index, bool enable) volatile
 	{
-		const uint32_t Bit = gpio_bit(index, T::OutputEnableMask);
+		const uint32_t Bit = gpio_bit(index, OutputEnableMask());
 		if (enable)
 		{
 			outputEnable = outputEnable | Bit;
@@ -115,7 +125,7 @@ struct SonataGpioBase
 	 */
 	bool read_input(uint32_t index) volatile
 	{
-		return (input & gpio_bit(index, T::InputMask)) > 0;
+		return (input & gpio_bit(index, InputMask())) > 0;
 	}
 
 	/**
@@ -127,18 +137,36 @@ struct SonataGpioBase
 	 */
 	bool read_debounced_input(uint32_t index) volatile
 	{
-		return (debouncedInput & gpio_bit(index, T::InputMask)) > 0;
+		return (debouncedInput & gpio_bit(index, InputMask())) > 0;
 	}
 };
 
 /**
- * A driver for Sonata's General GPIO (instance 0).
+ * A driver for Sonata's Board GPIO (instance 0).
  *
  * Documentation source:
  * https://lowrisc.org/sonata-system/doc/ip/gpio.html
  */
-struct SonataGpioGeneral : SonataGpioBase<SonataGpioGeneral>
+struct SonataGpioBoard : SonataGpioBase
 {
+	/**
+	 * The mask of bits of the `output` register that contain meaningful GPIO
+	 * output.
+	 */
+	static constexpr uint32_t OutputMask()
+	{
+		return 0x0000'00FF;
+	}
+
+	/**
+	 * The mask of bits of the `input` and `debouncedInput` registers that
+	 * contain meaningful GPIO input.
+	 */
+	static constexpr uint32_t InputMask()
+	{
+		return 0x0001'FFFF;
+	}
+
 	/**
 	 * Sonata's General GPIO input/output are directly wired to different
 	 * components; there is no relation between the bit mappings used for
@@ -146,7 +174,10 @@ struct SonataGpioGeneral : SonataGpioBase<SonataGpioGeneral>
 	 * no use for the `outputEnable` register used to toggle the GPIO pin
 	 * between an "input" or "output".
 	 */
-	static const uint32_t OutputEnableMask = 0x0000'0000;
+	static constexpr uint32_t OutputEnableMask()
+	{
+		return 0x0000'0000;
+	}
 
 	/**
 	 * The bit mappings of the output GPIO pins available in Sonata's General
@@ -156,22 +187,7 @@ struct SonataGpioGeneral : SonataGpioBase<SonataGpioGeneral>
 	 */
 	enum Outputs : uint32_t
 	{
-		LcdChipSelect              = (1 << 0),
-		LcdReset                   = (1 << 1),
-		LcdDc                      = (1 << 2),
-		LcdBacklight               = (1 << 3),
-		Leds                       = (0xFF << 4),
-		FlashChipSelect            = (1 << 12),
-		EthernetChipSelect         = (1 << 13),
-		EthernetReset              = (1 << 14),
-		RaspberryPiSpi0ChipSelect1 = (1 << 15),
-		RaspberryPiSpi0ChipSelect0 = (1 << 16),
-		RaspberryPiSpi1ChipSelect2 = (1 << 17),
-		RaspberryPiSpi1ChipSelect1 = (1 << 18),
-		RaspberryPiSpi1ChipSelect0 = (1 << 19),
-		ArduinoChipSelect          = (1 << 20),
-		MikroBusChipSelect         = (1 << 21),
-		MikroBusReset              = (1 << 22),
+		Leds = (0xFFu << 0),
 	};
 
 	/**
@@ -182,20 +198,20 @@ struct SonataGpioGeneral : SonataGpioBase<SonataGpioGeneral>
 	 */
 	enum Inputs : uint32_t
 	{
-		Joystick               = (0x1F << 0),
-		DipSwitches            = (0xFF << 5),
-		MikroBusInterrupt      = (1 << 13),
-		SoftwareSelectSwitches = (0x7 << 14),
+		DipSwitches            = (0xFFu << 0),
+		Joystick               = (0x1Fu << 8),
+		SoftwareSelectSwitches = (0x7u << 13),
+		MicroSdCardDetection   = (0x1u << 16),
 	};
 
 	/**
 	 * The bit index of the first GPIO pin connected to a user LED.
 	 */
-	static constexpr uint32_t FirstLED = 4;
+	static constexpr uint32_t FirstLED = 0;
 	/**
 	 * The bit index of the last GPIO pin connected to a user LED.
 	 */
-	static constexpr uint32_t LastLED = 11;
+	static constexpr uint32_t LastLED = 7;
 	/**
 	 * The number of user LEDs.
 	 */
@@ -210,7 +226,7 @@ struct SonataGpioGeneral : SonataGpioBase<SonataGpioGeneral>
 	 */
 	constexpr static uint32_t led_bit(uint32_t index)
 	{
-		return gpio_bit(index + FirstLED, LEDMask & OutputMask);
+		return gpio_bit(index + FirstLED, LEDMask);
 	}
 
 	/**
@@ -240,11 +256,11 @@ struct SonataGpioGeneral : SonataGpioBase<SonataGpioGeneral>
 	/**
 	 * The bit index of the first GPIO pin connected to a user switch.
 	 */
-	static constexpr uint32_t FirstSwitch = 5;
+	static constexpr uint32_t FirstSwitch = 0;
 	/**
 	 * The bit index of the last GPIO pin connected to a user switch.
 	 */
-	static constexpr uint32_t LastSwitch = 13;
+	static constexpr uint32_t LastSwitch = 7;
 	/**
 	 * The number of user switches.
 	 */
@@ -260,7 +276,7 @@ struct SonataGpioGeneral : SonataGpioBase<SonataGpioGeneral>
 	 */
 	constexpr static uint32_t switch_bit(uint32_t index)
 	{
-		return gpio_bit(index + FirstSwitch, SwitchMask & OutputMask);
+		return gpio_bit(index + FirstSwitch, SwitchMask);
 	}
 
 	/**
@@ -286,25 +302,34 @@ struct SonataGpioGeneral : SonataGpioBase<SonataGpioGeneral>
  * Documentation source:
  * https://lowrisc.org/sonata-system/doc/ip/gpio.html
  */
-struct SonataGpioRaspberryPiHat : SonataGpioBase<SonataGpioRaspberryPiHat>
+struct SonataGpioRaspberryPiHat : SonataGpioBase
 {
 	/**
 	 * The mask of bits of the `output` register that contain meaningful GPIO
 	 * output.
 	 */
-	static const uint32_t OutputMask = 0x0FFF'FFFF;
+	static constexpr uint32_t OutputMask()
+	{
+		return 0x0FFF'FFFF;
+	}
 
 	/**
 	 * The mask of bits of the `input` and `debouncedInput` registers that
 	 * contain meaningful GPIO input.
 	 */
-	static const uint32_t InputMask = 0x0FFF'FFFF;
+	static constexpr uint32_t InputMask()
+	{
+		return 0x0FFF'FFFF;
+	}
 
 	/**
 	 * The mask of bits of the `outputEnable` register that correspond to GPIO
 	 * pins which can have their output enabled or disabled.
 	 */
-	static const uint32_t OutputEnableMask = 0x0FFF'FFFF;
+	static constexpr uint32_t OutputEnableMask()
+	{
+		return 0x0FFF'FFFF;
+	}
 };
 
 /**
@@ -313,62 +338,140 @@ struct SonataGpioRaspberryPiHat : SonataGpioBase<SonataGpioRaspberryPiHat>
  * Documentation source:
  * https://lowrisc.org/sonata-system/doc/ip/gpio.html
  */
-struct SonataGpioArduinoShield : SonataGpioBase<SonataGpioArduinoShield>
+struct SonataGpioArduinoShield : SonataGpioBase
 {
 	/**
 	 * The mask of bits of the `output` register that contain meaningful GPIO
 	 * output.
 	 */
-	static const uint32_t OutputMask = 0x0003'FFFF;
+	static constexpr uint32_t OutputMask()
+	{
+		return 0x0000'3FFF;
+	}
 
 	/**
 	 * The mask of bits of the `input` and `debouncedInput` registers that
 	 * contain meaningful GPIO input.
 	 */
-	static const uint32_t InputMask = 0x0003'FFFF;
+	static constexpr uint32_t InputMask()
+	{
+		return 0x0000'3FFF;
+	}
 
 	/**
 	 * The mask of bits of the `outputEnable` register that correspond to GPIO
 	 * pins which can have their output enabled or disabled.
 	 */
-	static const uint32_t OutputEnableMask = 0x0003'FFFF;
+	static constexpr uint32_t OutputEnableMask()
+	{
+		return 0x0000'3FFF;
+	}
 };
 
 /**
- * A driver for Sonata's PMOD Header GPIO.
+ * A driver for Sonata's PMOD0 Header GPIO.
  *
  * Documentation source:
  * https://lowrisc.org/sonata-system/doc/ip/gpio.html
  */
-struct SonataGpioPmod : SonataGpioBase<SonataGpioPmod>
+struct SonataGpioPmod0 : SonataGpioBase
 {
 	/**
 	 * The mask of bits of the `output` register that contain meaningful GPIO
 	 * output.
 	 */
-	static const uint32_t OutputMask = 0x0000'FFFF;
+	static constexpr uint32_t OutputMask()
+	{
+		return 0x0000'00FF;
+	}
 
 	/**
 	 * The mask of bits of the `input` and `debouncedInput` registers that
 	 * contain meaningful GPIO input.
 	 */
-	static const uint32_t InputMask = 0x0000'FFFF;
+	static constexpr uint32_t InputMask()
+	{
+		return 0x0000'00FF;
+	}
 
 	/**
 	 * The mask of bits of the `outputEnable` register that correspond to GPIO
 	 * pins which can have their output enabled or disabled.
 	 */
-	static const uint32_t OutputEnableMask = 0x0000'FFFF;
-
-	/**
-	 * The bit mappings of the two PMOD headers available in Sonata's PMOD GPIO.
-	 */
-	enum Headers : uint32_t
+	static constexpr uint32_t OutputEnableMask()
 	{
-		Pmod0 = (0xFF << 0),
-		Pmod1 = (0xFF << 8),
-	};
+		return 0x0000'00FF;
+	}
 };
 
-// General GPIO typedef for backwards compatibility
-typedef SonataGpioGeneral SonataGPIO;
+/**
+ * A driver for Sonata's PMOD1 Header GPIO.
+ *
+ * Documentation source:
+ * https://lowrisc.org/sonata-system/doc/ip/gpio.html
+ */
+struct SonataGpioPmod1 : SonataGpioBase
+{
+	/**
+	 * The mask of bits of the `output` register that contain meaningful GPIO
+	 * output.
+	 */
+	static constexpr uint32_t OutputMask()
+	{
+		return 0x0000'00FF;
+	}
+
+	/**
+	 * The mask of bits of the `input` and `debouncedInput` registers that
+	 * contain meaningful GPIO input.
+	 */
+	static constexpr uint32_t InputMask()
+	{
+		return 0x0000'00FF;
+	}
+
+	/**
+	 * The mask of bits of the `outputEnable` register that correspond to GPIO
+	 * pins which can have their output enabled or disabled.
+	 */
+	static constexpr uint32_t OutputEnableMask()
+	{
+		return 0x0000'00FF;
+	}
+};
+
+/**
+ * A driver for Sonata's PMODC (PMOD Centre) Header GPIO.
+ *
+ * Documentation source:
+ * https://lowrisc.org/sonata-system/doc/ip/gpio.html
+ */
+struct SonataGpioPmodC : SonataGpioBase
+{
+	/**
+	 * The mask of bits of the `output` register that contain meaningful GPIO
+	 * output.
+	 */
+	static constexpr uint32_t OutputMask()
+	{
+		return 0x0000'003F;
+	}
+
+	/**
+	 * The mask of bits of the `input` and `debouncedInput` registers that
+	 * contain meaningful GPIO input.
+	 */
+	static constexpr uint32_t InputMask()
+	{
+		return 0x0000'003F;
+	}
+
+	/**
+	 * The mask of bits of the `outputEnable` register that correspond to GPIO
+	 * pins which can have their output enabled or disabled.
+	 */
+	static constexpr uint32_t OutputEnableMask()
+	{
+		return 0x0000'003F;
+	}
+};
