@@ -30,8 +30,7 @@ enum class SonataJoystick : uint16_t
  * template class parameter when declaring inheritance.
  *
  * Documentation source can be found at:
- * https://github.com/lowRISC/sonata-system/blob/a51f663fe042f07adc0d7a38601f6a5d8f91c6e6/doc/ip/gpio.md
- * TODO: update this source when documentation is updated
+ * https://github.com/lowRISC/sonata-system/blob/9f794fe3bd4eec8d1a01ee81da97a7f2cec0b452/doc/ip/gpio.md
  *
  * Rendered documentation is served from:
  * https://lowrisc.org/sonata-system/doc/ip/gpio.html
