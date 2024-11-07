@@ -61,7 +61,7 @@ struct SonataPulseWidthModulation
 	 */
 	bool output_set(uint32_t index, uint8_t period, uint8_t dutyCycle) volatile
 	{
-		if (index < Instances) {
+		if (index >= Instances) {
 			Debug::log("Specified PWM is out of range");
 			return false;
 		}
