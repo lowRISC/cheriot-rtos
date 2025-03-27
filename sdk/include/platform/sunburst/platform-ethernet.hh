@@ -32,7 +32,7 @@ class Ksz8851Ethernet
 	/**
 	 * Flag set to log messages when frames are dropped.
 	 */
-	static constexpr bool DebugDroppedFrames = true;
+	static constexpr bool DebugDroppedFrames = false;
 
 	/**
 	 * Maxmium size of a single Ethernet frame.

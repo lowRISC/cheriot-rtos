@@ -234,7 +234,7 @@ struct OpenTitanI2c
 	};
 
 	/// Flag set when we're debugging this driver.
-	static constexpr bool DebugOpenTitanI2c = true;
+	static constexpr bool DebugOpenTitanI2c = false;
 
 	/// Helper for conditional debug logs and assertions.
 	using Debug = ConditionalDebug<DebugOpenTitanI2c, "OpenTitan I2C">;
